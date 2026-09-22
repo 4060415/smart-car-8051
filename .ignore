@@ -15,6 +15,7 @@ refs/
 _toolchain_pkg/
 Objects/
 Listings/
+tools/_tmp/
 
 # ---- 二进制 / 图片 / 办公文档 ----
 *.png
