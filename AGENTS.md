@@ -22,6 +22,15 @@ STC89C52RC（8051）智能小车。工具链 Keil C51（`D:\keli`，**Eval 版�
   ⇒ **禁止** `glob **/*.h` 这类全项目扫描：会带出 `_toolchain_pkg/` 里几百个工具链头文件。
 - **`grep` 读 `.ignore`（已配好）**，可以放心按目录搜。
 - **不要读/搜**：`原始资料/`（只读原件）、`refs/`（派生素材）、`_toolchain_pkg/`、`现场照片/`、`Objects/`、`Listings/`。
+- ★ **汇编源码按需读，禁止整份读**（实测代价见下）：
+  - `firmware/car/car_asm.asm`（146 KB / **≈29.9k tokens**）、`firmware/remote/remote.asm`（6.3k）、
+    `firmware/car/config.h`（3.4k）—— **C 版移植（第 04 阶段）已完成，不再需要通读对照**。
+    要用就给行号范围（`read` 带 `offset`/`limit`）或 `grep` 定位；**一份 146 KB 的 .asm 读一次，
+    后面本会话每次请求都要重发它**（实测首次读入全价 $0.17，驻留上界 $6.33）。
+  - `firmware/c51/main_abs.asm` 与 `main_abs.LST` 是 **`build_c_abs.ps1` 每轮自动重生成的中间产物**
+    （`c51_link.py → main_abs.asm → A51 → main_abs.LST → hex`），**不要读、不要手改**。
+  - `firmware/diag/` 下 20 个探针 `.asm` 只在排查特定问题时读单个文件，别整目录扫。
+  - 这些文件**必须留在 git 里**：它们是汇编基线 hex 的唯一剩余源码形态，也是键值四副本中的两处。
 
 ## 按需读文档（不要整份读 README）
 
