@@ -1,0 +1,654 @@
+{
+    "id":  "fig5",
+    "title":  "图 5  避障判断流程",
+    "w":  415,
+    "h":  498,
+    "shapes":  [
+                   {
+                       "kind":  "label",
+                       "x":  244,
+                       "y":  60,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  146,
+                       "y":  95,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  244,
+                       "y":  112,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  146,
+                       "y":  147,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  258,
+                       "y":  166,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  146,
+                       "y":  199,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  342,
+                       "y":  228,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  280,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  146,
+                       "y":  282,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  156,
+                       "y":  364,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  354,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  146,
+                       "y":  413,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  242,
+                       "y":  398,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  90,
+                       "y":  22,
+                       "w":  120,
+                       "h":  22,
+                       "text":  "避障判断开始",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  58,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "避障功能打开了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  265,
+                       "y":  60,
+                       "w":  145,
+                       "h":  30,
+                       "text":  "直接放行\n恢复原来的动作，返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  110,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "现在是循迹模式吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  265,
+                       "y":  112,
+                       "w":  145,
+                       "h":  30,
+                       "text":  "循迹时不做主动绕障\n照常循迹，返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  162,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "现在停着等遥控吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  265,
+                       "y":  134,
+                       "w":  145,
+                       "h":  56,
+                       "text":  "车还停着，每隔一会儿响一声提醒\n障碍移开后停止响，但仍要等遥控操\n作\n按遥控键后才解除，返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  214,
+                       "w":  215,
+                       "h":  22,
+                       "text":  "测一次前方的距离",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  248,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "距离太近了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  294,
+                       "w":  215,
+                       "h":  22,
+                       "text":  "已经不远了：解除停车状态，避障重新生效",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  330,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "前方比较近吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  378,
+                       "w":  215,
+                       "h":  34,
+                       "text":  "小车本来就在动吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  426,
+                       "w":  215,
+                       "h":  30,
+                       "text":  "向右转，绕开障碍\n返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  265,
+                       "y":  366,
+                       "w":  145,
+                       "h":  44,
+                       "text":  "本来没动就不管\n（免得小车自己窜出去）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  265,
+                       "y":  414,
+                       "w":  145,
+                       "h":  44,
+                       "text":  "距离够远：放行\n恢复原来的动作，返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      150,
+                                      44
+                                  ],
+                                  [
+                                      150,
+                                      51
+                                  ],
+                                  [
+                                      142.5,
+                                      51
+                                  ],
+                                  [
+                                      142.5,
+                                      58
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      75
+                                  ],
+                                  [
+                                      265,
+                                      75
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      92
+                                  ],
+                                  [
+                                      142.5,
+                                      110
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      127
+                                  ],
+                                  [
+                                      265,
+                                      127
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      144
+                                  ],
+                                  [
+                                      142.5,
+                                      162
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      179
+                                  ],
+                                  [
+                                      258,
+                                      179
+                                  ],
+                                  [
+                                      258,
+                                      162
+                                  ],
+                                  [
+                                      265,
+                                      162
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      196
+                                  ],
+                                  [
+                                      142.5,
+                                      214
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      265
+                                  ],
+                                  [
+                                      337,
+                                      265
+                                  ],
+                                  [
+                                      337,
+                                      196
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      236
+                                  ],
+                                  [
+                                      142.5,
+                                      248
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      265
+                                  ],
+                                  [
+                                      254,
+                                      265
+                                  ],
+                                  [
+                                      254,
+                                      305
+                                  ],
+                                  [
+                                      265,
+                                      305
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      282
+                                  ],
+                                  [
+                                      142.5,
+                                      294
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      316
+                                  ],
+                                  [
+                                      142.5,
+                                      330
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      364
+                                  ],
+                                  [
+                                      142.5,
+                                      378
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      347
+                                  ],
+                                  [
+                                      260,
+                                      347
+                                  ],
+                                  [
+                                      260,
+                                      436
+                                  ],
+                                  [
+                                      265,
+                                      436
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      142.5,
+                                      412
+                                  ],
+                                  [
+                                      142.5,
+                                      426
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      250,
+                                      395
+                                  ],
+                                  [
+                                      252,
+                                      395
+                                  ],
+                                  [
+                                      252,
+                                      388
+                                  ],
+                                  [
+                                      265,
+                                      388
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

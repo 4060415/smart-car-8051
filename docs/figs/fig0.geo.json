@@ -1,0 +1,205 @@
+{
+    "id":  "fig0",
+    "title":  "图 0  流程图符号说明",
+    "w":  415,
+    "h":  278,
+    "shapes":  [
+                   {
+                       "kind":  "term",
+                       "x":  20,
+                       "y":  6,
+                       "w":  130,
+                       "h":  26,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  6,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "起止框：程序开始和结束的地方",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  20,
+                       "y":  42,
+                       "w":  130,
+                       "h":  26,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  42,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "处理框：表示要执行的一步操作",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  20,
+                       "y":  78,
+                       "w":  130,
+                       "h":  36,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  78,
+                       "w":  245,
+                       "h":  36,
+                       "text":  "判断框：一个入口、两个出口，出口要写清“是 / 否”",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "call",
+                       "x":  20,
+                       "y":  124,
+                       "w":  130,
+                       "h":  26,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  124,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "子程序框：表示调用一段独立的小程序",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "io",
+                       "x":  20,
+                       "y":  160,
+                       "w":  130,
+                       "h":  26,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  160,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "输入 / 输出框：读取信号，或者输出结果",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dot",
+                       "x":  79,
+                       "y":  196,
+                       "w":  12,
+                       "h":  12,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#000000",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  189,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "连接点：几条流程线在这里汇合",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  162,
+                       "y":  223,
+                       "w":  245,
+                       "h":  26,
+                       "text":  "流程线：箭头表示执行方向，横平竖直，不画斜线",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      20,
+                                      232
+                                  ],
+                                  [
+                                      124,
+                                      232
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

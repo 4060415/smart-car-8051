@@ -1,0 +1,55 @@
+# .gitignore —— 让 git 只跟踪"人和 agent 真正要改的东西"
+#
+# 取舍原则：
+#   1. 大块只读资料区（原始资料/ refs/ 现场照片/ _toolchain_pkg/）不进 git —— 它们是原件与派生素材，占 ~96% 体积。
+#   2. **hex 要进 git**：本工程的验收靠 hex 的 SHA256 指纹与"逐字节相同"比对，进 git 才看得出到底变没变。
+#   3. 链接中间产物（.OBJ/.M51/.ABS/.LST）不进 git —— 可重建。
+#   4. 报告 docx/pdf 是交付件，但体积大且二进制，不进 git；源在 docs/*.md 与 _hw_report_src/。
+
+# 大件只读资料区
+原始资料/
+refs/
+现场照片/
+_toolchain_pkg/
+Objects/
+Listings/
+
+# 办公文档与派生镜像
+*.pdf
+*.docx
+*.doc
+*.pptx
+*.xlsx
+*.htm
+*.html
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.zip
+*.rar
+*.exe
+*.DLL
+*.dll
+*.LIB
+*.lib
+
+# Keil 链接中间产物（hex 保留！）
+*.OBJ
+*.obj
+*.M51
+*.m51
+*.ABS
+*.abs
+*.LST
+*.lst
+
+# 构建日志与串口日志
+*.log
+
+# Word 临时锁文件
+~$*
+
+# git 自身
+.gitignore.bak

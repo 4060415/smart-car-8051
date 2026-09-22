@@ -1,0 +1,569 @@
+{
+    "id":  "fig7",
+    "title":  "图 7  示教回放流程",
+    "w":  415,
+    "h":  556,
+    "shapes":  [
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  59,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  95,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  255,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  291,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  353,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  389,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  405,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  441,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  457,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  493,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  80,
+                       "y":  22,
+                       "w":  135,
+                       "h":  22,
+                       "text":  "按下回放键",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  58,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "一条记录都没有吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  58,
+                       "w":  130,
+                       "h":  34,
+                       "text":  "显示“E”并响两声\n不进入回放",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  110,
+                       "w":  225,
+                       "h":  52,
+                       "text":  "进入回放：先记住当前档位（退出时恢复）\n暂停避障改写动作，从第 1 条开始\n显示“P”，响一声",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  174,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "主循环最前：只要在回放，就优先执行回放动作\n（不做避障判断，也不扫描按键）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  220,
+                       "w":  225,
+                       "h":  22,
+                       "text":  "① 先做安全检查（最优先）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  254,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "前方有危险吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  254,
+                       "w":  130,
+                       "h":  46,
+                       "text":  "立刻停车并结束回放\n响两声提示\n（不绕行、不接着播）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  306,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "② 接收一次遥控信号（不等候）\n超声波隔一段时间才测一次，免得误判",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  352,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "收到停止键或方向键吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  346,
+                       "w":  130,
+                       "h":  46,
+                       "text":  "人工结束回放：停车退出\n（不执行按下的这个方向）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  404,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "③ 这条动作播完了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  404,
+                       "w":  130,
+                       "h":  34,
+                       "text":  "返回主循环\n继续播这一条",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  456,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "④ 已经是最后一条吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  456,
+                       "w":  130,
+                       "h":  34,
+                       "text":  "接着播下一条",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "call",
+                       "x":  35,
+                       "y":  508,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "结束回放：停车，回到手动模式\n恢复原来的档位，刷新显示",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      44
+                                  ],
+                                  [
+                                      147.5,
+                                      58
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      75
+                                  ],
+                                  [
+                                      280,
+                                      75
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      92
+                                  ],
+                                  [
+                                      147.5,
+                                      110
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      162
+                                  ],
+                                  [
+                                      147.5,
+                                      174
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      208
+                                  ],
+                                  [
+                                      147.5,
+                                      220
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      242
+                                  ],
+                                  [
+                                      147.5,
+                                      254
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      271
+                                  ],
+                                  [
+                                      280,
+                                      271
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      288
+                                  ],
+                                  [
+                                      147.5,
+                                      306
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      340
+                                  ],
+                                  [
+                                      147.5,
+                                      352
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      369
+                                  ],
+                                  [
+                                      280,
+                                      369
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      386
+                                  ],
+                                  [
+                                      147.5,
+                                      404
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      421
+                                  ],
+                                  [
+                                      280,
+                                      421
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      438
+                                  ],
+                                  [
+                                      147.5,
+                                      456
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      473
+                                  ],
+                                  [
+                                      280,
+                                      473
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      490
+                                  ],
+                                  [
+                                      147.5,
+                                      508
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

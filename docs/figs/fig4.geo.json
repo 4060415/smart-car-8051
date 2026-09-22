@@ -1,0 +1,570 @@
+{
+    "id":  "fig4",
+    "title":  "图 4  红外遥控信号接收流程",
+    "w":  415,
+    "h":  548,
+    "shapes":  [
+                   {
+                       "kind":  "label",
+                       "x":  254,
+                       "y":  126,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  158,
+                       "y":  128,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  254,
+                       "y":  221,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  158,
+                       "y":  222,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  254,
+                       "y":  315,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  254,
+                       "y":  316,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  254,
+                       "y":  473,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  158,
+                       "y":  486,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  158,
+                       "y":  280,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  95,
+                       "y":  22,
+                       "w":  120,
+                       "h":  22,
+                       "text":  "接收红外遥控信号",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  58,
+                       "w":  230,
+                       "h":  34,
+                       "text":  "清掉上一次的接收结果\n先当作“没有收到信号”",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  40,
+                       "y":  104,
+                       "w":  230,
+                       "h":  36,
+                       "text":  "等到信号开始了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  282,
+                       "y":  107,
+                       "w":  130,
+                       "h":  30,
+                       "text":  "保持“没收到信号”\n返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  152,
+                       "w":  230,
+                       "h":  34,
+                       "text":  "测量起始低电平的持续时间\n顺便存下来，方便以后排查问题",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  40,
+                       "y":  198,
+                       "w":  230,
+                       "h":  36,
+                       "text":  "起始信号长度正常吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  282,
+                       "y":  201,
+                       "w":  130,
+                       "h":  30,
+                       "text":  "记为“信号不合格”\n返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  246,
+                       "w":  230,
+                       "h":  34,
+                       "text":  "测量起始高电平的持续时间",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  40,
+                       "y":  292,
+                       "w":  230,
+                       "h":  36,
+                       "text":  "后面还有数据吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  282,
+                       "y":  295,
+                       "w":  130,
+                       "h":  30,
+                       "text":  "记为“重复信号”\n（按键还按着）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  340,
+                       "w":  230,
+                       "h":  52,
+                       "text":  "逐位接收 32 位数据\n每一位先是一段短的低电平，再看高电平的长短\n高电平短的是 0，长的是 1\n哪一位等超时了，就判为接收失败",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  404,
+                       "w":  230,
+                       "h":  34,
+                       "text":  "检查收到的两组数据是不是互为反码\n（用来确认信号没有收错）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  40,
+                       "y":  450,
+                       "w":  230,
+                       "h":  36,
+                       "text":  "校验通过吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  282,
+                       "y":  453,
+                       "w":  130,
+                       "h":  42,
+                       "text":  "按情况记为“重复信号”\n或“信号不合格”，返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  40,
+                       "y":  498,
+                       "w":  230,
+                       "h":  34,
+                       "text":  "确认收到完整信号，取出按键编号\n交给按键处理，然后返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      44
+                                  ],
+                                  [
+                                      155,
+                                      58
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      92
+                                  ],
+                                  [
+                                      155,
+                                      104
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      270,
+                                      122
+                                  ],
+                                  [
+                                      282,
+                                      122
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      140
+                                  ],
+                                  [
+                                      155,
+                                      152
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      186
+                                  ],
+                                  [
+                                      155,
+                                      198
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      270,
+                                      216
+                                  ],
+                                  [
+                                      282,
+                                      216
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      234
+                                  ],
+                                  [
+                                      155,
+                                      246
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      280
+                                  ],
+                                  [
+                                      155,
+                                      292
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      270,
+                                      310
+                                  ],
+                                  [
+                                      282,
+                                      310
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      270,
+                                      310
+                                  ],
+                                  [
+                                      276,
+                                      310
+                                  ],
+                                  [
+                                      276,
+                                      315
+                                  ],
+                                  [
+                                      282,
+                                      315
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      282,
+                                      315
+                                  ],
+                                  [
+                                      276,
+                                      315
+                                  ],
+                                  [
+                                      276,
+                                      366
+                                  ],
+                                  [
+                                      270,
+                                      366
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      392
+                                  ],
+                                  [
+                                      155,
+                                      404
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      438
+                                  ],
+                                  [
+                                      155,
+                                      450
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      270,
+                                      468
+                                  ],
+                                  [
+                                      282,
+                                      468
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      486
+                                  ],
+                                  [
+                                      155,
+                                      498
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      155,
+                                      328
+                                  ],
+                                  [
+                                      155,
+                                      340
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

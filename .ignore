@@ -1,0 +1,53 @@
+# .ignore —— 给 grep 用的搜索排除表
+#
+# 为什么用 .ignore 而不是 .gitignore：
+#   本工程原先没有 git 仓库，而 ripgrep 默认**只在 git 仓库里**才认 .gitignore。
+#   .ignore 无条件生效，所以它对 grep 一定管用。
+#   注意：glob 工具不读任何 ignore 文件（它写死 --no-ignore），
+#   所以 glob 的收敛要靠 AGENTS.md 里的搜索纪律，不能靠这个文件。
+#
+# 效果：grep 可见的文本文件从 ~610 个降到 ~100 个（真正的源码与文档）。
+
+# ---- 大块只读资料区：占项目约 96% 体积，且都不是源码 ----
+原始资料/
+refs/
+现场照片/
+_toolchain_pkg/
+Objects/
+Listings/
+
+# ---- 二进制 / 图片 / 办公文档 ----
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.pdf
+*.docx
+*.doc
+*.xlsx
+*.pptx
+*.LIB
+*.lib
+*.DLL
+*.dll
+*.exe
+*.zip
+*.rar
+
+# ---- docs/*.htm 是 .md 的 Word 排版派生镜像，已落后于源文件 ----
+*.htm
+*.html
+
+# ---- Keil 链接中间产物（源码在同目录的 .asm / .c / .h；hex 是交付件，保留可搜）----
+*.OBJ
+*.obj
+*.M51
+*.m51
+*.ABS
+*.abs
+*.LST
+*.lst
+
+# ---- Word 临时锁文件 ----
+~$*

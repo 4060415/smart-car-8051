@@ -1,0 +1,466 @@
+;=========================================================================
+; main.asm  --  智能移动机器人 正式固件（红外遥控动作录制与回放）
+;-------------------------------------------------------------------------
+; 目标器件 : STC89C52RC @ 11.0592MHz
+; 生成工具 : Keil A51 + BL51 + OH51   ->  build.ps1
+;-------------------------------------------------------------------------
+; 本文件按"一块一块加、每块都能单独上机验证"的方式写。当前进度：
+;
+;   [x] 块① 电机层：Motor_Set(action, speed) + 软件 PWM + 数码管档位
+;               + 蜂鸣器 + 按键调速（S3 加档 / S4 减档）
+;   [ ] 块② 红外遥控（NEC 解码搬 remote.asm，加方向控制 + 遥控调速）
+;   [ ] 块③ 模式状态机（手动/寻光/循迹/避障/录制/回放）+ 模式切换
+;   [ ] 块④ 寻光模式（P1.1 左 / P1.0 右，见光 = 低）
+;   [ ] 块⑤ 循迹模式（P3.5/P3.6，压黑线 = 高）
+;   [ ] 块⑥ 避障模式（超声波 P1.2/P1.3 + 红外反射 P3.5/P3.6）
+;   [ ] 块⑦ 动作录制（240 B 缓冲放片内扩展 RAM）
+;   [ ] 块⑧ 动作回放（10 ms 节拍调度 + 中断 + 空记录/满保护）
+;
+; 本块怎么验证（不需要红外遥控器）：
+;   烧进去 -> S3(P3.4) 按一下加一档，S4(P3.2) 按一下减一档
+;   档位 0 = 停（数码管 "0"、D3 灭）；档位 1~5 = 前进 20/40/60/80/100%
+;   数码管显示档位，D3 亮 = 电机在动，每次变档蜂鸣器短响
+;   ⚠️ 第一次跑把车轮架空
+;
+; 引脚（全部来自 firmware\car\config.h，已实测确认，不得改）：
+;   P0.0~P0.3 = L293D INPUT1~4（方向）      P0.4/P0.5 = ENA/ENB（高 = 使能，PWM 调速）
+;   P0.6 = 蜂鸣器（PNP，低 = 发声，无源需方波）   P0.7 = 不用（写 1）
+;   P2.7~P2.1 = 数码管 a~g（共阳，写 0 点亮，**顺序是反的**）   P2.0 = D3 灯（写 0 亮）
+;   P3.2 = 按键 S4      P3.4 = 按键 S3      P3.1 = TXD（9600 调试）
+;
+; ★ 架构约定（块①定下，后面所有块都遵守）：
+;   1) **主循环永远不直接写 P0**。P0 由 Timer0 中断每 99.8us 组装一次：
+;      方向位来自 DIRBITS，ENA/ENB 来自 PWM 比较，蜂鸣器位来自 BUZB。
+;      这样"主循环改方向"和"中断打 PWM"不会互相踩。
+;   2) 动作码 -> 电机图案的映射只在这一个文件里（MOTOR_SET_ACT / DIRTAB），
+;      也就是报告里的 Motor_Set(action, speed) 统一出口。
+;   3) 时基：Timer0 方式2（重装 164）≈ 99.8us/tick；20 tick = 2ms = 500Hz PWM；
+;      Timer1 方式2 做 9600 波特率（调试用）。红外解码将来也用这同一个 tick。
+;=========================================================================
+
+; --- 数码管段码（共阳：写 0 点亮；bit7..bit1 = a b c d e f g；bit0 = D3 灯，1 = 灭）---
+DISP_0      EQU     03H
+DISP_1      EQU     9FH
+DISP_2      EQU     25H
+DISP_3      EQU     0DH
+DISP_4      EQU     99H
+DISP_5      EQU     49H
+DISP_6      EQU     41H
+DISP_7      EQU     1FH
+
+; --- P0 方向位（低 4 位 = IN1..IN4；与 config.h 的 PAT_* 一致）---
+DIR_STOP    EQU     00H
+DIR_FWD     EQU     05H             ; IN1 + IN3
+DIR_BACK    EQU     0AH             ; IN2 + IN4
+DIR_LEFT    EQU     06H             ; IN2 + IN3 -> 原地左转
+DIR_RIGHT   EQU     09H             ; IN1 + IN4 -> 原地右转
+
+; --- 动作码（与报告表 4 一致）---
+ACT_STOP    EQU     00H
+ACT_FORWARD EQU     01H
+ACT_BACK    EQU     02H
+ACT_LEFT    EQU     03H
+ACT_RIGHT   EQU     04H
+
+; --- 时基 / PWM / 档位 ---
+T0_RELOAD   EQU     164             ; 256-164 = 92 机器周期 ≈ 99.8us
+PWM_PER     EQU     20              ; 20 tick = 2ms -> 500Hz
+MAXGEAR     EQU     5               ; 档位 0(停) .. 5(100%)
+BUZ_DIV     EQU     5               ; 蜂鸣器每 5 tick 翻一次 ≈ 1kHz
+BEEP_TICKS  EQU     40              ; 变档提示音：40 个半周期 ≈ 20ms
+DEBOUNCE_MS EQU     20
+
+; --- RAM（直接寻址区 30H 起；240 B 动作缓冲将来放片内扩展 RAM，不占这里）---
+PWMC        DATA    30H             ; PWM 计数 0..19（中断维护）
+DIRBITS     DATA    31H             ; 方向位（主循环写、中断读）
+DUTY_A      DATA    32H             ; ENA 占空比 0..20
+DUTY_B      DATA    33H             ; ENB 占空比 0..20
+BUZP        DATA    34H             ; 蜂鸣器分频计数
+BUZLEFT     DATA    35H             ; 蜂鸣器还剩几个半周期
+GEAR        DATA    36H             ; 当前档位 0..5
+KLAST       DATA    37H             ; 按键去抖状态：0 = 都松开，1 = S3 按着，2 = S4 按着
+
+ENAB        BIT     20H.0           ; 中断内部临时位
+ENBB        BIT     20H.1
+BUZB        BIT     20H.2           ; 1 = 蜂鸣器静音（PNP 高电平不导通）
+
+KEY_S3      BIT     P3.4            ; 低 = 按下（加档）
+KEY_S4      BIT     P3.2            ; 低 = 按下（减档）
+
+            ORG     0000H
+            LJMP    MAIN
+
+            ORG     000BH               ; Timer0 中断向量
+            LJMP    T0_ISR
+
+            ORG     0030H
+;=========================================================================
+; 初始化
+;=========================================================================
+MAIN:
+            MOV     SP,     #60H
+            MOV     PWMC,   #0
+            MOV     DIRBITS,#DIR_STOP
+            MOV     DUTY_A, #0
+            MOV     DUTY_B, #0
+            MOV     BUZP,   #0
+            MOV     BUZLEFT,#0
+            SETB    BUZB                ; 上电静音
+            MOV     GEAR,   #0
+            MOV     KLAST,  #0
+            MOV     P0,     #0C0H       ; 上电先停车（ENA/ENB 拉低）
+            MOV     P1,     #0FFH
+            MOV     P2,     #DISP_0
+            MOV     P3,     #0FFH
+
+            ; ---- 串口 9600 8N1（T1 方式2）+ T0 方式2 做 100us 时基 ----
+            MOV     TMOD,   #22H        ; 高半字节 T1 方式2，低半字节 T0 方式2
+            MOV     TH1,    #0FDH       ; 11059200/(384*3) = 9600
+            MOV     TL1,    #0FDH
+            MOV     SCON,   #50H
+            MOV     PCON,   #00H
+            SETB    TR1
+            MOV     TH0,    #T0_RELOAD
+            MOV     TL0,    #T0_RELOAD
+            SETB    ET0
+            SETB    EA
+            SETB    TR0
+
+            MOV     DPTR,   #MSG_BOOT
+            ACALL   PRINT_STR
+            ACALL   APPLY_GEAR          ; 档位 0 = 停车 + 显示 "0"
+
+;=========================================================================
+; 主循环：按键调速（块②起这里还会接红外与模式状态机）
+;=========================================================================
+MAIN_LOOP:
+            ACALL   KEY_SCAN            ; 出: A = 0 无事件 / 1 加档 / 2 减档
+            JZ      ML_LOOPEND
+
+            CJNE    A,      #1,     ML_DOWN
+            MOV     A,      GEAR
+            CJNE    A,      #MAXGEAR, ML_UP
+            SJMP    ML_LOOPEND          ; 已经最高档
+ML_UP:
+            INC     GEAR
+            SJMP    ML_APPLY
+
+ML_DOWN:
+            MOV     A,      GEAR
+            JZ      ML_LOOPEND          ; 已经 0 档
+            DEC     GEAR
+
+ML_APPLY:
+            MOV     A,      #BEEP_TICKS
+            ACALL   BEEP                ; 变档提示音
+            ACALL   APPLY_GEAR
+            ACALL   PRT_GEAR            ; 串口打一行（调试用）
+
+ML_LOOPEND:
+            SJMP    MAIN_LOOP
+
+;=========================================================================
+; APPLY_GEAR —— 把当前档位套用到电机 + 数码管
+;   档位 0   -> 停车（ENA/ENB 都拉低），数码管 "0"，D3 灭
+;   档位 1~5 -> 前进，占空比 20/40/60/80/100%，数码管显示档位，D3 亮
+;=========================================================================
+APPLY_GEAR:
+            MOV     A,      GEAR
+            JZ      AG_STOP
+
+            ; ---- 前进 + 该档占空比 ----
+            MOV     A,      GEAR
+            DEC     A                   ; 1..5 -> 0..4
+            MOV     DPTR,   #DUTYTAB
+            MOVC    A,      @A+DPTR
+            MOV     DUTY_A, A
+            MOV     DUTY_B, A
+            MOV     DIRBITS,#DIR_FWD
+
+            ; ---- 数码管显示档位，D3 亮（bit0 = 0）----
+            MOV     A,      GEAR
+            MOV     DPTR,   #GEARTAB
+            MOVC    A,      @A+DPTR
+            CLR     ACC.0
+            MOV     P2,     A
+            RET
+
+AG_STOP:
+            MOV     DUTY_A, #0
+            MOV     DUTY_B, #0
+            MOV     DIRBITS,#DIR_STOP
+            MOV     A,      GEAR
+            MOV     DPTR,   #GEARTAB
+            MOVC    A,      @A+DPTR
+            MOV     P2,     A           ; 档位 0 的段码 bit0 已经是 1 = D3 灭
+            RET
+
+;=========================================================================
+; MOTOR_SET_ACT —— 报告里的 Motor_Set(action) 统一出口
+;   入：A = 动作码（ACT_*）；R7 = 速度档 1..5（0 = 停）
+;   出：无（只改 DIRBITS / DUTY_A / DUTY_B，真正的输出由中断完成）
+;   用 R6 暂存动作码（不用 PUSH/POP，避免任何路径漏掉 POP 把栈搞歪）
+;   块①只做"两轮同速"；差速转弯（不同幅度）在块②里扩展。
+;=========================================================================
+MOTOR_SET_ACT:
+            MOV     R6,     A               ; 动作码暂存到 R6
+            MOV     A,      R7
+            JZ      MSA_IDLE                ; 速度 0 -> 停
+            DEC     A                       ; 1..5 -> 0..4
+            MOV     DPTR,   #DUTYTAB
+            MOVC    A,      @A+DPTR
+            MOV     DUTY_A, A
+            MOV     DUTY_B, A
+
+            MOV     A,      R6
+            CJNE    A,      #ACT_FORWARD, MSA_2
+            MOV     DIRBITS,#DIR_FWD
+            RET
+MSA_2:
+            CJNE    A,      #ACT_BACK,    MSA_3
+            MOV     DIRBITS,#DIR_BACK
+            RET
+MSA_3:
+            CJNE    A,      #ACT_LEFT,    MSA_4
+            MOV     DIRBITS,#DIR_LEFT
+            RET
+MSA_4:
+            CJNE    A,      #ACT_RIGHT,   MSA_IDLE
+            MOV     DIRBITS,#DIR_RIGHT
+            RET
+
+MSA_IDLE:                               ; 停止：两路断电
+            MOV     DIRBITS,#DIR_STOP
+            MOV     DUTY_A, #0
+            MOV     DUTY_B, #0
+            RET
+
+;=========================================================================
+; KEY_SCAN —— 按键扫描（带 20ms 去抖 + 松手才认下一次）
+;   出：A = 0 无事件 / 1 加档（S3 / P3.4）/ 2 减档（S4 / P3.2）
+;=========================================================================
+KEY_SCAN:
+            MOV     A,      KLAST
+            JNZ     KS_RELWAIT          ; 上一次还按着 -> 先等松手
+
+            JNB     KEY_S3, KS_S3
+            JNB     KEY_S4, KS_S4
+            CLR     A
+            RET
+
+KS_S3:
+            ACALL   D_20MS
+            JB      KEY_S3, KS_NONE     ; 20ms 后已经松开 -> 抖动，不算
+            MOV     KLAST,  #1
+            MOV     A,      #1
+            RET
+
+KS_S4:
+            ACALL   D_20MS
+            JB      KEY_S4, KS_NONE
+            MOV     KLAST,  #2
+            MOV     A,      #2
+            RET
+
+KS_RELWAIT:                             ; 等两个键都松开
+            MOV     A,      KLAST
+            CJNE    A,      #1,     KS_RW4
+            JB      KEY_S3, KS_RELOK
+            CLR     A
+            RET
+KS_RW4:
+            JB      KEY_S4, KS_RELOK
+            CLR     A
+            RET
+KS_RELOK:
+            MOV     KLAST,  #0
+KS_NONE:
+            CLR     A
+            RET
+
+;=========================================================================
+; BEEP —— 入：A = 半周期个数（每半周期 = BUZ_DIV tick ≈ 0.5ms）
+;   真正翻转由 Timer0 中断做，主循环不阻塞。
+;   改 BUZLEFT/BUZB 时短暂关中断：免得中断正好读到"改了一半"的状态。
+;=========================================================================
+BEEP:
+            JZ      BEEP_OFF
+            CLR     EA
+            MOV     BUZLEFT, A
+            CLR     BUZB                ; 低电平 -> PNP 导通 -> 开始发声
+            SETB    EA
+            RET
+BEEP_OFF:
+            CLR     EA
+            MOV     BUZLEFT, #0
+            SETB    BUZB
+            SETB    EA
+            RET
+
+;=========================================================================
+; Timer0 中断：每 99.8us 一次
+;   ① 软件 PWM（PWMC 0..19 与 DUTY_A/B 比较）-> ENA/ENB
+;   ② 蜂鸣器方波（每 BUZ_DIV tick 翻一次）
+;   ③ 把上面两者 + DIRBITS 组装成一个字节写进 P0
+;   只用到 ACC / PSW（所以只 PUSH 这两个），主循环的 R0~R7、B 不受影响。
+;=========================================================================
+T0_ISR:
+            PUSH    PSW
+            PUSH    ACC
+
+            ; ---- ① PWM 计数与比较 ----
+            INC     PWMC
+            MOV     A,      PWMC
+            CJNE    A,      #PWM_PER, T0_NR
+            MOV     PWMC,   #0
+T0_NR:
+            MOV     A,      PWMC
+            CLR     C
+            SUBB    A,      DUTY_A          ; C = 1 -> 本 tick 使能 A
+            MOV     ENAB,   C
+            MOV     A,      PWMC
+            CLR     C
+            SUBB    A,      DUTY_B
+            MOV     ENBB,   C
+
+            ; ---- ② 蜂鸣器方波 ----
+            INC     BUZP
+            MOV     A,      BUZP
+            CJNE    A,      #BUZ_DIV, T0_P0
+            MOV     BUZP,   #0
+            MOV     A,      BUZLEFT
+            JZ      T0_MUTE
+            DEC     BUZLEFT
+            CPL     BUZB
+            SJMP    T0_P0
+T0_MUTE:
+            SETB    BUZB                ; 用完了 -> 静音
+
+            ; ---- ③ 组装 P0 ----
+T0_P0:
+            MOV     A,      DIRBITS
+            ORL     A,      #080H       ; bit7 恒 1
+            MOV     C,      ENAB
+            MOV     ACC.4,  C
+            MOV     C,      ENBB
+            MOV     ACC.5,  C
+            MOV     C,      BUZB
+            MOV     ACC.6,  C
+            MOV     P0,     A
+
+            POP     ACC
+            POP     PSW
+            RETI
+
+;=========================================================================
+; 串口输出辅助（9600 8N1，P3.1）
+;=========================================================================
+PUTCHAR:
+            MOV     SBUF,   A
+            JNB     TI,     $
+            CLR     TI
+            RET
+
+PRINT_STR:
+            CLR     A
+            MOVC    A,      @A+DPTR
+            JZ      PS_DONE
+            INC     DPTR
+            ACALL   PUTCHAR
+            SJMP    PRINT_STR
+PS_DONE:
+            RET
+
+PUT_DIG:                                ; A = 0..9 -> '0'..'9'
+            ADD     A,      #30H
+            ACALL   PUTCHAR
+            RET
+
+; PRT_PCT —— 入：A = 占空比档 0..20 -> 打印百分数（0/20/.../100）
+PRT_PCT:
+            MOV     B,      #5
+            MUL     AB                      ; A = 0..100
+            MOV     R2,     #0              ; 十位
+PP_10:
+            CJNE    A,      #10, PP_C
+PP_C:
+            JC      PP_ONES
+            SUBB    A,      #10
+            INC     R2
+            SJMP    PP_10
+PP_ONES:
+            MOV     R3,     A               ; 个位
+            MOV     A,      R2
+            JZ      PP_NOTENS
+            ADD     A,      #30H
+            ACALL   PUTCHAR
+PP_NOTENS:
+            MOV     A,      R3
+            ADD     A,      #30H
+            ACALL   PUTCHAR
+            RET
+
+; PRT_GEAR —— 串口打一行 "gear N  duty=XX%"（调试用；验收版可关掉）
+PRT_GEAR:
+            MOV     DPTR,   #MSG_GEAR
+            ACALL   PRINT_STR
+            MOV     A,      GEAR
+            ACALL   PUT_DIG
+            MOV     DPTR,   #MSG_DUTY
+            ACALL   PRINT_STR
+            MOV     A,      DUTY_A
+            ACALL   PRT_PCT
+            MOV     DPTR,   #MSG_PCT
+            ACALL   PRINT_STR
+            RET
+
+CRLF:
+            MOV     A,      #0DH
+            ACALL   PUTCHAR
+            MOV     A,      #0AH
+            ACALL   PUTCHAR
+            RET
+
+;=========================================================================
+; 延时（机器周期 = 1.085us）；中断仍在后台跑 PWM/蜂鸣器，不影响电机
+;   D_1MS 用 R1/R2；D_20MS 用 R3。都不碰主循环的 R7。
+;=========================================================================
+D_1MS:
+            MOV     R2,     #2
+D1M_1:      MOV     R1,     #230
+D1M_2:      DJNZ    R1,     D1M_2
+            DJNZ    R2,     D1M_1
+            RET                             ; ≈ 1.01ms
+
+D_20MS:
+            MOV     R3,     #10
+D20M_1:     ACALL   D_1MS
+            DJNZ    R3,     D20M_1
+            RET
+
+;=========================================================================
+; 常量表
+;=========================================================================
+GEARTAB:                                ; 档位 0..5 的段码（bit0 = D3）
+            DB  DISP_0, DISP_1, DISP_2, DISP_3, DISP_4, DISP_5
+
+DUTYTAB:                                ; 档位 1..5 的 PWM 占空比档（0..20 = 0..100%）
+            DB  4, 8, 12, 16, 20        ; 20 / 40 / 60 / 80 / 100%
+
+;=========================================================================
+; 字符串（串口用纯 ASCII）
+;=========================================================================
+MSG_BOOT:
+            DB  0DH,0AH,'=== SMART CAR MAIN FIRMWARE (block 1: motor + gear) ===',0DH,0AH
+            DB  'P0.0-3 = L293D IN1-4, P0.4/5 = ENA/ENB (500Hz software PWM)',0DH,0AH
+            DB  'gear 0 = STOP, gear 1-5 = FORWARD 20/40/60/80/100%',0DH,0AH
+            DB  'S3 (P3.4) = gear up, S4 (P3.2) = gear down, beep on change.',0DH,0AH
+            DB  '7seg = gear, D3 lit = motors running. LIFT THE CAR FIRST.',0DH,0AH,0
+MSG_GEAR:
+            DB  0DH,0AH,'gear ',0
+MSG_DUTY:
+            DB  '  duty=',0
+MSG_PCT:
+            DB  '%',0
+
+            END

@@ -1,0 +1,432 @@
+{
+    "id":  "fig6",
+    "title":  "图 6  示教录制流程",
+    "w":  415,
+    "h":  542,
+    "shapes":  [
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  59,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  95,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  221,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  257,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  256,
+                       "y":  365,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  154,
+                       "y":  401,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  80,
+                       "y":  22,
+                       "w":  135,
+                       "h":  22,
+                       "text":  "按下录制键",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  58,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "已经在录制了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  58,
+                       "w":  130,
+                       "h":  34,
+                       "text":  "结束录制：把最后一段存好\n显示恢复，响两声",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  110,
+                       "w":  225,
+                       "h":  52,
+                       "text":  "开始录制：先停车\n清空上一次的记录，记下起点时间\n显示“r”，响一声",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  174,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "主循环每轮：只要在录制，就采集一次数据\n（放在避障判断之后）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  220,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "记录条数满了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  214,
+                       "w":  130,
+                       "h":  46,
+                       "text":  "自动结束录制：停车\n显示“F”并长响提示\n（已经录到的内容保留）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  272,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "算出距离上次采集过了多久\n不到一个采样间隔就直接返回",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  318,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "更新计时起点\n把当前“动作 + 档位”打包成一个字节",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  35,
+                       "y":  364,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "动作和档位没变吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  280,
+                       "y":  358,
+                       "w":  130,
+                       "h":  46,
+                       "text":  "只把这一段的时间累加\n时间太长或计数溢出，就另起一条",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  416,
+                       "w":  225,
+                       "h":  34,
+                       "text":  "变了：先把上一条存好\n再用新的动作另起一条",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  35,
+                       "y":  462,
+                       "w":  225,
+                       "h":  64,
+                       "text":  "存储一条记录\n开头还没有动作时，不保存\n条数满了就停止保存\n否则写入动作、档位和时长，条数加 1",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      44
+                                  ],
+                                  [
+                                      147.5,
+                                      58
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      75
+                                  ],
+                                  [
+                                      280,
+                                      75
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      92
+                                  ],
+                                  [
+                                      147.5,
+                                      110
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      162
+                                  ],
+                                  [
+                                      147.5,
+                                      174
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      208
+                                  ],
+                                  [
+                                      147.5,
+                                      220
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      237
+                                  ],
+                                  [
+                                      280,
+                                      237
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      254
+                                  ],
+                                  [
+                                      147.5,
+                                      272
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      306
+                                  ],
+                                  [
+                                      147.5,
+                                      318
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      352
+                                  ],
+                                  [
+                                      147.5,
+                                      364
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      260,
+                                      381
+                                  ],
+                                  [
+                                      280,
+                                      381
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      398
+                                  ],
+                                  [
+                                      147.5,
+                                      416
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      147.5,
+                                      450
+                                  ],
+                                  [
+                                      147.5,
+                                      462
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

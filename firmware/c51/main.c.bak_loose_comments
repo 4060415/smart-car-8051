@@ -1,0 +1,2712 @@
+/*=========================================================================
+ * main.c  --  智能移动机器人 正式固件（C 版）
+ *-------------------------------------------------------------------------
+ * 姓名   : 李家乐
+ * 学号   : 03231312
+ * 芯片   : STC89C52RC，晶振 11.0592 MHz
+ * 编译   : Keil C51，构建脚本 firmware\c51\build_c_abs.ps1
+ * 产物   : main.hex（正常版）、main_dbg.hex（带串口打印的诊断版）
+ *-------------------------------------------------------------------------
+ * 程序功能
+ *   1. 电机控制：软件 PWM 分 5 档调速，数码管显示档位，蜂鸣器提示
+ *   2. 红外遥控：自己解码 NEC 协议，控制方向和速度档位
+ *   3. 模式切换：手动 / 寻光 / 循迹 三种模式
+ *   4. 避障：超声波管较远的距离，车头红外对管兜最后 1~2cm
+ *   5. 录制回放：遥控数字键 7 开始或结束录制，8 回放，9 清空
+ *
+ * 遥控按键（键值都是实测出来的）
+ *   46 前进   15 后退   44 左转   43 右转   40 停止
+ *   5A 加档   08 减档
+ *   0C 手动   18 寻光   5E 循迹
+ *   1C 超声波避障开关
+ *   42 录制   52 回放   4A 清空
+ *
+ * 板上按键
+ *   S3 短按加档，长按约 1 秒切换模式
+ *   S4 短按减档，长按约 1 秒开关超声波避障
+ *-------------------------------------------------------------------------
+ * 引脚（都实测核对过，现场以 firmware\car\config.h 为准）
+ *   P0.0~P0.3 = 电机方向        P0.4 / P0.5 = 左右电机使能
+ *   P0.6 = 蜂鸣器（低电平响）   P0.7 = 没用到，写 1
+ *   P2.7~P2.1 = 数码管 a~g      P2.0 = D3 指示灯
+ *   P3.2 = 按键 S4              P3.4 = 按键 S3
+ *   P3.3 = 红外接收头输出       P3.7 = 车头红外对管
+ *   P3.5 / P3.6 = 循迹左右探头  P1.0 / P1.1 = 右 / 左光敏
+ *   P1.2 / P1.3 = 超声波 Echo / Trig   P3.1 = 串口发送（调试用）
+ *-------------------------------------------------------------------------
+ * 写这个程序时踩过几个坑，记在这里免得再犯
+ *   1) 主循环不要直接写 P0。P0 只在定时器中断里组装：低 4 位是方向，
+ *      P0.4 / P0.5 是两路使能，P0.6 是蜂鸣器，P0.7 固定写 1。
+ *   2) 驱动电机都走 motor_set() 这一个出口，避障要改写动作还是刹停
+ *      也都在这一个地方判断，别处不要再改方向变量。
+ *   3) 中断和主循环都会用到的变量要加 volatile，不然会被优化进寄存器。
+ *   4) 判断时间一律用系统时基（tick / ms10），不要用空循环凑时间，
+ *      因为空循环的耗时随编译优化变，改个选项就不准了。
+ *   5) 动作记录的 240 字节放在片内扩展 RAM，只能用 XBYTE[] 访问，
+ *      不能用 pdata 指针（它会拿 P2 当高位地址，把数码管显示弄花）。
+ *   6) 中断里的活要尽量少：C 的函数进出开销比汇编大，一次中断最好
+ *      只做几次加法和比较。
+ *=========================================================================*/
+
+#include <reg52.h>
+#include <absacc.h>             /* XBYTE[]：片内扩展 RAM 访问（生成 MOVX @DPTR） */
+#include <intrins.h>            /* _nop_()：超声波触发脉冲要精确的 ~13µs */
+
+/*=========================================================================
+ * 一、编译开关
+ *   这两个开关默认都关着。串口打印很占时间（9600 波特率下一行 40 个
+ *   字符要 42ms，而一帧遥控信号只有 67ms），边打印边收遥控会漏帧，
+ *   所以正式用的时候不开，调程序时再打开。
+ *   用 #ifndef 包起来是为了能在编译命令里临时打开，不用改源码。
+ *=========================================================================*/
+#ifndef DEBUG_UART
+#define DEBUG_UART  0           /* 1 = 编入串口打印（开发期用） */
+#endif
+#ifndef DIAG_IR
+#define DIAG_IR     0           /* 1 = 编入数码管键值显示（排查"遥控没反应"用） */
+#endif
+/* 超声波自测版：只反复运行本文件里的 us_read()，把结果直接显示在数码管
+ * 上，用来分清到底是测距本身不行，还是避障逻辑没用上。 */
+#ifndef AV_SCOPE
+#define AV_SCOPE    0
+#endif
+
+/* 松键停车：1 = 除了前进以外，松手约 0.3s 自动停；
+ * 0 = 全部改成按一下就一直动。
+ * 如果按住遥控键时小车一颠一颠的，说明这只遥控器不发重复帧，
+ * 把这里改成 0 重新编译即可。 */
+#define HOLD_MODE   1
+
+/*=========================================================================
+ * 二、引脚
+ *=========================================================================*/
+sbit KEY_S3  = P3^4;            /* 低 = 按下（短按加档 / 长按切模式） */
+sbit KEY_S4  = P3^2;            /* 低 = 按下（短按减档 / 长按避障开关） */
+sbit IR_IN   = P3^3;            /* 红外接收头输出：空闲是高，收到载波时变低 */
+
+sbit LDR_LEFT  = P1^1;          /* 左光敏：见光 = 低 */
+sbit LDR_RIGHT = P1^0;          /* 右光敏：见光 = 低 */
+
+sbit TRACK_L = P3^5;            /* 循迹左探头：压黑线 = 高 */
+sbit TRACK_R = P3^6;            /* 循迹右探头：压黑线 = 高 */
+
+sbit US_TRIG = P1^3;            /* 超声波触发（输出，高脉冲 >= 10us） */
+sbit US_ECHO = P1^2;            /* 超声波回波（输入，高电平宽度正比于距离） */
+
+sbit IR_AVOID = P3^7;           /* 车头红外对管：量程只有 1~2cm（最后一道兜底） */
+
+/*=========================================================================
+ * 三、时间参数
+ *   1 个 tick = 99.83us（Timer0 方式 2，重装值 164：256-164 = 92 机器周期）
+ *=========================================================================*/
+#define T0_RELOAD    164        /* Timer0 重装值 */
+#define PWM_DIV      5          /* 每 5 个 tick 走一个 PWM 步 => 500us/步 */
+#define PWM_STEPS    20         /* 20 步 = 10ms = 100Hz；占空比 5% 一档 */
+#define BUZ_DIV      5          /* 蜂鸣器每 5 个 tick 翻一次 = 1kHz */
+#define MAXGEAR      5          /* 档位 0（停）.. 5（100%） */
+
+/* ---- 倒车安全限制（不加硬件，只能用软件兜）----
+ * 超声波和车头红外都装在车头、只朝前，倒车时看不到车后，所以倒车
+ * 加了三条限制：
+ *   ① 限速：倒车最高只给 BACK_GEAR_MAX 档（数码管还显示你设的档位，
+ *      只是实际出力封了顶）；
+ *   ② 限时：连续倒车超过 BACK_TMO_TICKS 就自动停车并响两声；
+ *      想接着倒就松开再按一次。
+ *   ③ 倒车时超声波那一档不参与，免得倒着倒着自己原地打转。
+ * ---------------------------------------------------------------- */
+#define BACK_GEAR_MAX  2        /* 倒车最高档：2/5 ≈ 40% 占空比 */
+#define BACK_TMO_TICKS 30000    /* 连续倒车最长 3.0s（30000 × 99.83us ≈ 2.995s）*/
+
+#define BEEP_TICKS   40         /* 提示音：40 个半周期 ≈ 20ms */
+#define BEEP_KEY     24         /* 收到遥控键的短提示音 ≈ 12ms */
+
+#define MS10_DIV     100        /* 100 tick = 9.983ms ≈ 10ms：录制/回放的节拍单位 */
+
+/* 时基超时门限（单位 tick，换成时间见注释） */
+#define LP_TMO_TICKS   9984     /* S3/S4 长按门限 39×256 ≈ 1.0s */
+#define HOLD_TMO_TICKS 3000     /* 松键停车：11×256+184 = 3000 tick ≈ 300ms */
+#define TRK_TMO_TICKS  4864     /* 循迹脱线超时 19×256 ≈ 0.5s */
+#define ERRTMO_TICKS   2000     /* "帧被拒"诊断打印限流 ≈ 200ms */
+#define AVBEEP_TICKS   6912     /* 刹停锁存期间间歇响的间隔 27×256 ≈ 0.69s */
+/* 锁存的提醒音只响 AVBEEP_N 声就安静下来（含刹停那一声）。
+ * 车还是照旧停着等遥控操作，只是不一直响了。
+ * 想恢复成一直响到有人接管，把这个值改大即可。 */
+#define AVBEEP_N       3
+/* 障碍要持续退到 US_CLEAR 之外这么久，才算真的让开了。
+ * 加这段是因为超声波贴得很近时读数会抖：一会儿读到很近，一会儿读不到
+ * 回波，锁存会被反复重立，听起来就像过一会儿又响一声。 */
+#define AV_CLEAR_TICKS 5000
+
+/* 车头红外这一路的提示音是否静音（刹车功能保留）。
+ * 1 = 静音（当前用这个）；0 = 也让红外这一路参与锁存提醒。
+ * 注意这只影响声音，红外刹车仍然是全局的、关不掉的。 */
+#define IR_BEEP_SILENT 1
+#define D20MS_TICKS    200      /* 20ms：按键去抖 / 提示音间隔 */
+#define US_TRIG_TICKS  2        /* 超声波触发脉冲宽度：2 tick ≈ 200us（规格要求 >= 10us） */
+
+/*=========================================================================
+ * 四、红外 NEC 门限（单位 tick，1 tick = 100us）
+ *   完整帧：9ms 低 + 4.5ms 高，后面跟 32 位数据；
+ *           每一位是 0.56ms 低 + 一段高电平，高电平 0.56ms 是 0，
+ *           1.69ms 是 1。
+ *   重复帧：9ms 低 + 2.25ms 高，之后一直是高，表示键还按着。
+ *=========================================================================*/
+#define IR_LEAD_MIN   70        /* 引导码低电平下限 7ms（标称 9ms，放宽） */
+#define IR_LEAD_MAX   120       /* 引导码低电平上限 12ms */
+#define IR_LEADHCAP   60        /* 引导码高电平只量到 6ms 就收手：到点还高 = 重复帧 */
+#define IR_LEADH_MIN  25        /* 完整帧的引导码高电平至少 2.5ms */
+#define IR_REP_MIN    12        /* >= 1.2ms 才可能是引导码，短于此当噪声 */
+#define IR_BIT_TH     11        /* 位高电平 >= 1.1ms 判为位 1（0.56 / 1.69 的中间） */
+#define IR_BITCAP     12        /* 最后一位只量到 1.2ms 就下结论（后面是空闲高电平） */
+
+/*=========================================================================
+ * 五、动作码与电机图案
+ *=========================================================================*/
+#define ACT_STOP      0x00
+#define ACT_FORWARD   0x01
+#define ACT_BACK      0x02
+#define ACT_LEFT      0x03
+#define ACT_RIGHT     0x04
+#define ACT_ARC_L     0x05      /* 弧线左转：两轮都正转，左轮（内轮）慢 */
+#define ACT_ARC_R     0x06      /* 弧线右转：两轮都正转，右轮（内轮）慢 */
+#define ACT_NONE      0xFF      /* key2act 用：不认识的键 */
+
+#define GEAR_DEFAULT  3         /* 挂在 0 档时按方向键 -> 自动跳到这一档（60%） */
+
+/* P0 低 4 位方向图案（IN1..IN4） */
+#define DIR_STOP      0x00
+#define DIR_FWD       0x05      /* IN1 + IN3 -> 两轮同向正转 */
+#define DIR_BACK      0x0A      /* IN2 + IN4 -> 两轮同向反转 */
+#define DIR_LEFT      0x06      /* IN2 + IN3 -> 左轮反转 + 右轮正转 = 原地左转 */
+#define DIR_RIGHT     0x09      /* IN1 + IN4 -> 左轮正转 + 右轮反转 = 原地右转 */
+
+/*=========================================================================
+ * 六、避障闸门的状态
+ *   闸门只在手动和寻光两种模式下起作用，循迹模式不参与
+ *   （循迹是自己找线跑，被推开就跑偏了）。
+ *=========================================================================*/
+#define AV_FREE       0         /* 放行：无障碍 */
+#define AV_TURN       1         /* 近区：动作一律改写成"原地右转避让" */
+#define AV_HOLD       2         /* 太近：刹停 + 锁存，车不动，决定权交给遥控 */
+#define AV_HUMAN      3         /* 遥控已接管：完全放行；距离回到安全值后自动回 AV_FREE */
+
+/* 超声波门限（1 tick ≈ 1.72cm：回波高电平 ≈ 58.3us/cm） */
+#define US_NEAR       12        /* 12 tick ≈ 21cm：更近 -> 转向避让 */
+#define US_STOP       3         /* 3 tick ≈ 5cm：更近 -> 刹停锁存 */
+#define US_CLEAR      7         /* 7 tick ≈ 12cm：退到这儿才停止间歇响（滞回，防止抖动） */
+#define US_TOUT_TICKS 250       /* 等回波上升沿最多等 250 tick，大约 25ms。
+                                 * 模块正常 1ms 内就有回波，这个余量足够；
+                                 * 超时由中断自己收场，不会把主循环堵住。 */
+#define US_GAP_MS10   6         /* 两次测距之间至少隔 6 × 10ms = 60ms。
+                                 * 模块要求测距周期不小于 60ms，测得太密它就不响应了，
+                                 * 那样每一趟都白等一回，车看起来就像不动。 */
+#define US_FAR        0xFF      /* 没回波 / 太远（> 255 tick ≈ 4.4m）：当作"够远" */
+#define PSF_GAP       6         /* 回放中测距节流：6 × 10ms = 60ms（HC-SR04 规格要求） */
+
+/*=========================================================================
+ * 七、运行模式
+ *   板上 S3 长按可以循环切换模式，遥控数字键 1 / 2 / 3 可以直接选。
+ *   避障不是一个模式，它是所有模式下都在跑的判断。
+ *=========================================================================*/
+#define MODE_MANUAL   0
+#define MODE_LIGHT    1         /* 寻光 */
+#define MODE_TRACK    2         /* 循迹 */
+#define NMODES        3         /* S3 长按循环只在这 3 个模式里转 */
+#define MODE_PLAY     3         /* 回放模式。故意让它排在模式表最后，
+                                 * 这样长按 S3 循环切模式永远切不到它，只能按遥控数字键 8 进入。 */
+
+/*=========================================================================
+ * 八、遥控键值（cmd 字节，全部实测确认）
+ *=========================================================================*/
+#define KEY_FORWARD   0x46
+#define KEY_BACK      0x15
+#define KEY_LEFT      0x44
+#define KEY_RIGHT     0x43
+#define KEY_STOP      0x40
+#define KEY_SPD_UP    0x5A      /* 数字键 6 */
+#define KEY_SPD_DN    0x08      /* 数字键 4 */
+#define KEY_M1        0x0C      /* 数字键 1 -> 手动 */
+#define KEY_M2        0x18      /* 数字键 2 -> 寻光 */
+#define KEY_M3        0x5E      /* 数字键 3 -> 循迹 */
+/* 数字键 5：超声波避障开关，和长按 S4 是一个功能（遥控上够得着，
+ * 用起来方便）。它只管超声波，车头红外是全局的，这个键关不掉。
+ * 遥控没电时还可以长按 S4 开关，两条路都在。 */
+#define KEY_AVOID     0x1C      /* 数字键 5 -> 超声波避障开/关 */
+#define KEY_REC       0x42      /* 数字键 7 -> 录制开/关 */
+#define KEY_PLAY      0x52      /* 数字键 8 -> 回放 */
+#define KEY_CLR       0x4A      /* 数字键 9 -> 清空记录 */
+#define LASTCMD_NONE  0xFF      /* "还没收过键"的哨兵值 */
+
+/*=========================================================================
+ * 九、录制 / 回放的参数
+ *   一条记录占 3 个字节：
+ *     第 1 字节 = (动作码 << 4) | 档位
+ *     第 2 字节 = 时长的低 8 位
+ *     第 3 字节 = 时长的高 8 位（单位 10ms）
+ *   最多 80 条，共 240 字节，放在片内扩展 RAM 的 0x0000~0x00EF。
+ *=========================================================================*/
+#define REC_BASE      0x0000    /* 记录区起点（XBYTE 的偏移基址） */
+#define REC_MAX       80        /* 最多 80 条 */
+#define REC_UNIT      3         /* 每条 3 字节 */
+#define ACTPK_MASK    0xF0      /* Byte0 高 4 位 = 动作码 */
+#define GEAR_MASK     0x0F      /* Byte0 低 4 位 = 档位 */
+#define RECCAP_H      0x0B      /* 单条记录的时长上限，只看高字节：0x0B00 × 9.983ms 约 28 秒。
+                                 * 只看高字节是为了省掉 16 位比较，这里不需要很精确。 */
+
+/* 第 n 条记录的起始地址 = n × 3。
+ * 这里写成移位加加法而不是直接乘 3，是为了不让编译器去调乘法库函数，
+ * 少一个外部符号，手工排地址时省事。 */
+#define REC_ADDR(idx)  ((unsigned int)(((unsigned int)(idx) << 1) + (idx)))
+
+/*=========================================================================
+ * 十、数码管段码
+ *   共阳数码管，写 0 才亮。位序 bit7..bit1 对应 a~g，bit0 是 D3 指示灯。
+ *   要注意段选顺序是反的：a 接在 P2.7，g 接在 P2.1；P2.0 不是段选。
+ *=========================================================================*/
+#define DISP_0  0x03
+#define DISP_1  0x9F
+#define DISP_2  0x25
+#define DISP_3  0x0D
+#define DISP_4  0x99
+#define DISP_5  0x49
+#define DISP_6  0x41
+#define DISP_7  0x1F
+#define DISP_8  0x01
+#define DISP_L  0xE3            /* 寻光模式代号 "L" */
+#define DISP_T  0xE1            /* 循迹模式代号 "t" */
+#define DISP_R  0xF5            /* 录制中 "r"（只点 e+g） */
+#define DISP_P  0x31            /* 回放中 "P" */
+#define DISP_E  0x61            /* 空记录 / 拒绝 */
+#define DISP_F  0x71            /* 已录满 80 条 */
+
+/*=========================================================================
+ * 十一、常量表（放程序存储器 code，不占 RAM）
+ *=========================================================================*/
+static const unsigned char code gear_tab[6] = {     /* 档位 0..5 的段码 */
+    DISP_0, DISP_1, DISP_2, DISP_3, DISP_4, DISP_5
+};
+
+static const unsigned char code duty_tab[5] = {     /* 档位 1..5 -> PWM 档 0..20 */
+    4, 8, 12, 16, 20                                 /* 20/40/60/80/100% */
+};
+
+/* 弧线转弯时内轮的占空比（外轮还是按 duty_tab 给）。
+ * 内轮和外轮差别越小，转弯半径越大；内轮越小，弯越急。
+ * 现在取的是外轮的 20%~25%，之前取 40% 时感觉转弯太慢，就调小了。 */
+static const unsigned char code arc_tab[5] = { 1, 2, 2, 3, 4 };
+
+static const unsigned char code mode_tab[4] = {     /* 索引 = 模式号 */
+    DISP_0, DISP_L, DISP_T, DISP_P                   /* 0 手动 / 1 寻光 / 2 循迹 / 3 回放 */
+};
+
+#if DIAG_IR
+static const unsigned char code hex_seg[16] = {     /* 0..F 段码（诊断显示用） */
+    0x03, 0x9F, 0x25, 0x0D, 0x99, 0x49, 0x41, 0x1F,
+    0x01, 0x09, 0x11, 0x81, 0x63, 0x85, 0x61, 0x71
+};
+#endif
+
+/*=========================================================================
+ * 十二、全局变量
+ *   分成几组：中断里用的、时基、业务状态、录制回放。
+ *   中断和主循环都要用的，一律加 volatile。
+ *=========================================================================*/
+
+/*---- 12.1 中断内维护 ----*/
+static unsigned char pwm_div;               /* PWM 分频计数 0..PWM_DIV-1 */
+static unsigned char pwm_cnt;               /* PWM 当前步 0..19 */
+/* 这里删掉了两个只写不读的变量，给直接寻址区腾地方：
+ *   buz_div  —— 蜂鸣器改成每个 PWM 步翻转一次以后就没人读它了；
+ *   ml_start —— 本来用来存量脉宽的起始时刻，实际是存进去又马上读出来，
+ *               直接赋给 t0 就行，不需要占一个全局。
+ * 直接寻址区只有 30H~7FH 共 80 字节，加变量时要留心别超了。 */
+static volatile unsigned char buz_left;     /* 蜂鸣器还剩几个半周期 */
+static bit buz_quiet;                       /* 1 = 静音（P0.6 为高，PNP 不导通）。
+                                             * 不写静态初值，那样会生成初始化段；
+                                             * 由 init_all() 在开中断之前置 1。 */
+static bit ena;                             /* 本步 ENA 使能 */
+static bit enb;                             /* 本步 ENB 使能 */
+static volatile unsigned char tick_l;       /* 100us 时基低字节 */
+static volatile unsigned char tick_h;       /* 100us 时基高字节（溢出周期 6.55s） */
+static volatile unsigned char ms10_l;       /* 10ms 时基低字节 */
+static volatile unsigned char ms10_h;       /* 10ms 时基高字节 */
+static unsigned char ms_div;                /* 10ms 分频计数 0..99 */
+/* 超声波测距：完全非阻塞的状态机。
+ * 中断每 99.83us 推进一步，主循环只负责发触发和取结果，一次都不等，
+ * 所以模块就算不响应也拖不慢主循环，遥控不会因此被饿死。
+ * 这些变量都不写静态初值，因为本工程不跑 C 运行期初始化段，
+ * 初值一律由 us_init() 在开中断之前显式给。 */
+#define US_ST_IDLE    0                     /* 空闲：没在测（绝大多数 tick 停在这里，中断开销最小）*/
+#define US_ST_WAIT    1                     /* 已发触发，等回波上升沿 */
+#define US_ST_HIGH    2                     /* 回波已拉高，正在数宽度 */
+static volatile unsigned char us_st;        /* 状态机当前状态 US_ST_* */
+static volatile unsigned char us_wid;       /* 本次回波已持续几个 tick（中断里 +1）*/
+static volatile bit us_got;                 /* 1 = 刚量完，结果在 us_res（主循环取走后清 0）*/
+static volatile unsigned char us_res;       /* 量到的结果：tick 数 / US_FAR = 没量到 */
+static unsigned char us_wait;               /* 等上升沿已等了多少 tick（只由中断 +1）*/
+static bit us_valid;                        /* 0 = 还没量到过：一律按"够远"报（失效安全）*/
+static bit us_seen;                         /* 节流：是否触发过一次 */
+static unsigned char us_last10;             /* 节流：上次触发时的 10ms 计数 */
+static unsigned char us_last_d;             /* 节流：上次的结果 */
+#if AV_SCOPE
+static unsigned char us_stage;              /* 自测版用：0=上升沿超时 1=够远 2=量到了 */
+#endif
+
+/*---- 12.2 电机与档位（主循环写、中断读）----*/
+static volatile unsigned char dirbits;      /* 方向位 D0~D3 */
+static volatile unsigned char duty_a;       /* 左轮 ENA 占空比 0..20 */
+static volatile unsigned char duty_b;       /* 右轮 ENB 占空比 0..20 */
+static unsigned char gear;                  /* 当前档位 0..5 */
+static unsigned char cur_act;               /* 当前动作码（D3 指示灯靠它判"在动"） */
+/* A：倒车限时（back_guard 用；中断不碰，只在主循环里读写）*/
+static bit back_on;                         /* 1 = 正在倒车且已开始计时 */
+static unsigned int back_t0;                /* 本次倒车的起始时刻 */
+/* 超声近距提示音（"倒车雷达"）的上次发声时刻 / 停车后计时 */
+static unsigned int prox_t;
+static bit prox_moving;                     /* 1 = 车在动（用来捕捉"刚停下"的那一刻）*/
+static bit prox_hold;                       /* 1 = 还在停车后 2 秒的宽限时间里；
+                                             * 到点以后一直是 0，直到车再次动起来。 */
+static unsigned int prox_stop_t;            /* 车停下的时刻（停车后还要响 2s）*/
+
+/*---- 12.3 按键 ----*/
+static unsigned char klast;                 /* 0 = 都松开 / 1 = S3 短 / 2 = S4 短 / 3 = S3 长 / 4 = S4 长 */
+
+/*---- 12.4 红外解码 ----*/
+static unsigned int  ml_dur;                /* 量到的时长（tick） */
+static unsigned char ml_cap;                /* 量脉宽的限时；0 = 默认 25.6ms */
+static unsigned char ml_level;              /* 要量的电平：0 = 低，1 = 高 */
+static unsigned char ir_bits;               /* 剩余位数 */
+static unsigned char ir_ptridx;             /* 当前字节序号 0..3 */
+static unsigned char ir_maskb;              /* 当前位掩码 */
+static unsigned char ir_ib0;                /* 地址 */
+static unsigned char ir_ib1;                /* 地址取反 */
+static unsigned char ir_ib2;                /* 命令 = 键值 */
+static unsigned char ir_ib3;                /* 命令取反 */
+static unsigned char irstat;                /* 0 完整帧 / 1 静默 / 2 被拒 / 3 重复帧 */
+static unsigned char lastcmd;               /* 上次处理过的键值 */
+static unsigned int  lastt;                 /* 最后一次收到红外帧的时刻 */
+static unsigned char ir_ledlo;              /* 诊断：最近量到的引导码低电平 */
+static unsigned char ir_ledhi;              /* 诊断：最近量到的引导码高电平 */
+static unsigned int  last_err;              /* 上次打印"帧被拒"的时刻（限流） */
+static bit ir_short;                        /* 1 = 本次引导码高电平是"短的"（1.2~2.5ms，待定） */
+static unsigned char ir_inv;                /* 车头红外极性：0 = 低电平表示检测到 */
+static bit us_avoid_on;                     /* 超声波避障开关，上电默认打开。
+                                             * 它只管超声波；车头红外是全局的，关不掉。 */
+static unsigned char avst;                  /* 避障闸门状态 AV_* */
+static unsigned int  av_beep_t;             /* 上次"刹停提示音"的时刻 */
+static unsigned char av_beep_n;             /* 本次锁存已经响了几声（到 AVBEEP_N 就安静）*/
+static bit av_clear_on;                     /* 是否已开始计"障碍退远"的时间 */
+static unsigned int av_clear_t;             /* 开始计时的时刻 */
+
+/*---- 12.5 模式与板载计时 ----*/
+static unsigned char mode;                  /* 当前模式 MODE_* */
+static unsigned int  last_line;             /* 最后一次"探头看到黑线"的时刻 */
+
+/*---- 12.6 录制 / 回放 ----*/
+static bit recon;                           /* 1 = 正在录制（叠加在手动模式上的标志） */
+static bit playerr;                         /* 1 = 上次回放因"安全"终止 */
+static bit recfull;                         /* 1 = 已录满 80 条 */
+static unsigned char pack;                  /* 待提交记录的 (动作<<4)|档位 —— 合并判定只看它 */
+static unsigned int  cur_dur;               /* 当前记录已累计时长 */
+static unsigned int  samp;                  /* 上次采样时刻（回放的安全检测也复用它） */
+static unsigned char recn;                  /* 已提交记录数 0..80 */
+static unsigned char playidx;               /* 回放索引 0..79 */
+static unsigned int  play_dur;              /* 当前回放条目时长 */
+static unsigned int  play_t0;               /* 当前回放条目起始时刻 */
+static unsigned char play_gear0;            /* 进入回放前的档位（退出时恢复） */
+
+#if DIAG_IR
+static unsigned char diag_cmd;              /* 诊断：要显示的键值 */
+static unsigned char diag_on;               /* 诊断：0 关 / 1 显示键值 / 2 显示被拒参数 */
+static unsigned char diag_seq;              /* 诊断：0..7 */
+static unsigned int  diag_t0;               /* 诊断：上一次换显示内容的时刻（600ms 一换） */
+#endif
+
+/*=========================================================================
+ * 十三、函数原型
+ *=========================================================================*/
+static unsigned int  tick_get(void);
+static unsigned int  ms10_get(void);
+static void          d_20ms(void);
+static void          beep(unsigned char half_cycles);
+static void          prt_boot(void);
+static void          prt_key(void);
+static void          prt_hex(unsigned char v);
+static void          prt_gear(void);
+static void          prt_release(void);
+static void          prt_actname(void);
+static void          ir_errpr(void);
+
+static void          motor_set(unsigned char act, unsigned char g);
+static unsigned char d3_mix(unsigned char seg);
+static bit           avoid_off(void);
+static void          apply_gear(void);
+static void          show_state(void);
+static void          show_mode(void);
+
+static unsigned char key_scan(void);
+static unsigned char key2act(unsigned char v);
+static unsigned char key2mode(unsigned char v);
+static bit           k_isfwd(void);
+
+static void          mode_switch(void);
+static void          mode_goto(unsigned char m);
+static void          light_step(void);
+static void          track_step(void);
+
+static void          us_init(void);
+static void          us_trigger(void);
+static unsigned char us_read(void);
+static bit           ir_det(void);
+static void          av_gate(void);
+static void          av_gate_hold(void);
+static void          ir_brake(void);
+static void          avoid_toggle(void);
+
+static bit           meas_level(void);
+static void          ir_reset(void);
+static bit           ir_decode_bits(void);
+static void          ir_decode(void);
+static void          ir_recv(void);
+static void          ir_recv_nb(void);
+static void          ir_setbit(unsigned char idx);
+static void          stamp_now(void);
+static void          do_key(void);
+static void          ml_apply(void);
+static void          ir_holdchk(void);
+static void          back_guard(void);
+static void          prox_beep(void);
+
+static void          rec_halt(void);
+static bit           rec_commit(void);
+static void          rec_err(void);
+static void          rec_fullstop(void);
+static void          rec_sample(void);
+static void          rec_enter(void);
+static void          rec_exit(void);
+static void          rec_key(void);
+static void          clr_key(void);
+
+static void          play_load(void);
+static bit           play_safety(void);
+static void          play_exit(void);
+static void          play_abort(void);
+static void          play_enter(void);
+static void          play_step(void);
+static void          play_key(void);
+
+static void          init_all(void);
+
+#if DIAG_IR
+static void          diag_keyshow(void);
+static void          diag_errshow(void);
+static void          diag_update(void);
+static void          diag_dly(void);
+#endif
+
+/*=========================================================================
+ * 十四、Timer0 中断：100us 时基 + 软件 PWM + 蜂鸣器方波 + 10ms 节拍
+ *   using 1 换一组寄存器，中断里就不用保存主循环的 R0~R7，省时间。
+ *   普通的一次中断只做两次加法和一次比较，P0 每 5 个 tick 才组装一次。
+ *   中断总时间必须短于 99.83us，否则会丢 tick，PWM 就乱了。
+ *=========================================================================*/
+void timer0_isr(void) interrupt 1 using 1
+{
+    unsigned char a;
+
+    /* ---- ① 100us 系统时基：红外脉宽测量、各种超时都靠它，必须每次都加 ---- */
+    if (++tick_l == 0)
+        tick_h++;
+
+    /* ---- ② PWM：每 PWM_DIV 个 tick 走一步 ---- */
+    if (++pwm_div >= PWM_DIV) {
+        pwm_div = 0;
+
+        if (++pwm_cnt >= PWM_STEPS)
+            pwm_cnt = 0;
+
+        ena = (pwm_cnt < duty_a);
+        enb = (pwm_cnt < duty_b);
+
+        /* ---- ③ 蜂鸣器方波：每个 PWM 步（500us）翻一次 = 1kHz ---- */
+        if (buz_left) {
+            buz_left--;
+            buz_quiet = ~buz_quiet;
+        } else {
+            buz_quiet = 1;                  /* 半周期用完 -> 静音 */
+        }
+
+        /* ---- ④ 组装 P0（主循环永不写 P0，只改上面这几个变量）---- */
+        a = 0x80;                           /* P0.7 恒 1（未使用，且 P0 是开漏口） */
+        a |= dirbits;                       /* D0~D3 = IN1~IN4 方向 */
+        if (ena) a |= 0x10;                 /* P0.4 = ENA */
+        if (enb) a |= 0x20;                 /* P0.5 = ENB */
+        if (buz_quiet) a |= 0x40;           /* P0.6 = 1 -> 静音 */
+        P0 = a;
+    }
+
+    /* ---- ⑤ 10ms 节拍分频：每个 tick 都加 ----
+     * 放在写 P0 之后，对 PWM 时序没有影响。
+     * 必须放在中断里：主循环一趟最长会被收红外堵 25.6ms，用它数节拍会有
+     * 很大误差，录制回放的时长就不准了。 */
+    if (++ms_div >= MS10_DIV) {
+        ms_div = 0;
+        if (++ms10_l == 0)
+            ms10_h++;
+    }
+
+    /* ---- ⑥ 超声波回波采样（非阻塞状态机，也放在写 P0 之后）----
+     * 中断每 99.83us 准时跑一次，所以数出来的回波宽度和主循环快慢无关。
+     * 主循环只负责发触发和取结果，一次都不等。
+     * 开销很小：空闲时绝大多数 tick 只走一条判断就过去了。 */
+    if (us_st != US_ST_IDLE) {
+        if (us_st == US_ST_WAIT) {
+            if (US_ECHO) {                  /* 上升沿到了：开始数宽度 */
+                us_wid = 0;
+                us_st  = US_ST_HIGH;
+            } else if (us_wait < US_TOUT_TICKS) {
+                us_wait++;                  /* 还没来，接着等（主循环不受影响）*/
+            } else {                        /* 超时：模块没响应这次触发 */
+                us_st  = US_ST_IDLE;
+                us_res = US_FAR;
+                us_got = 1;
+#if AV_SCOPE
+                us_stage = 0;               /* 自测版 E：等不到上升沿 */
+#endif
+            }
+        } else {                            /* US_ST_HIGH：数回波宽度 */
+            if (US_ECHO) {
+                if (us_wid < US_NEAR) {
+                    us_wid++;               /* 还没够远，接着数 */
+                } else {                    /* 已经够远，不必再等下降沿 */
+                    us_st  = US_ST_IDLE;
+                    us_res = US_FAR;
+                    us_got = 1;
+#if AV_SCOPE
+                    us_stage = 1;           /* 自测版 H：回波够远 */
+#endif
+                }
+            } else {                        /* 下降沿：宽度就是距离 */
+                us_st  = US_ST_IDLE;
+                us_res = us_wid;
+                us_got = 1;
+#if AV_SCOPE
+                us_stage = 2;               /* 自测版：正常量到了 */
+#endif
+            }
+        }
+    }
+}
+
+/*=========================================================================
+ * 十五、读系统时基（要原子）
+ *   16 位计数器分两个字节，读的时候如果被中断打断，可能读到一半新
+ *   一半旧的（比如低字节刚进位）。关中断只几个机器周期，不影响计时。
+ *=========================================================================*/
+static unsigned int tick_get(void)
+{
+    unsigned int t;
+    ET0 = 0;
+    t = ((unsigned int)tick_h << 8) | tick_l;
+    ET0 = 1;
+    return t;
+}
+
+static unsigned int ms10_get(void)
+{
+    unsigned int t;
+    ET0 = 0;
+    t = ((unsigned int)ms10_h << 8) | ms10_l;
+    ET0 = 1;
+    return t;
+}
+
+/*=========================================================================
+ * 十六、短延时
+ *   用系统时基来等，不用空循环：空循环的耗时随编译优化变，而这里要的
+ *   是实实在在的 20ms（按键去抖、提示音间隔）。
+ *   延时期间中断照常跑，电机不会停。
+ *=========================================================================*/
+static void d_20ms(void)
+{
+    unsigned int t0 = tick_get();
+    while ((unsigned int)(tick_get() - t0) < D20MS_TICKS)
+        ;
+}
+
+/*=========================================================================
+ * 十七、蜂鸣器
+ *   入：half_cycles = 半周期个数（一个半周期 500us，听起来约 1kHz）。
+ *   这里只置计数，真正翻转由中断做，主循环不用等。
+ *   改计数和静音标志时短暂关一下中断，免得中断读到改了一半的状态。
+ *=========================================================================*/
+static void beep(unsigned char half_cycles)
+{
+    if (half_cycles == 0) {                 /* 关掉鸣叫 */
+        ET0 = 0;
+        buz_left = 0;
+        buz_quiet = 1;
+        ET0 = 1;
+        return;
+    }
+    ET0 = 0;
+    buz_left = half_cycles;
+    buz_quiet = 0;                          /* 低电平 -> PNP 导通 -> 开始发声 */
+    ET0 = 1;
+}
+
+/*=========================================================================
+ * 十八、串口调试输出（9600 8N1）
+ *   DEBUG_UART = 0 时全部是空函数，调用点照旧，不占体积。
+ *=========================================================================*/
+#if DEBUG_UART
+static void put_char(char c)
+{
+    SBUF = c;
+    while (!TI)
+        ;
+    TI = 0;
+}
+
+static void prt_str(const char code *s)
+{
+    while (*s)
+        put_char(*s++);
+}
+
+static void prt_hex(unsigned char v)
+{
+    unsigned char hi = (v >> 4) & 0x0F;
+    unsigned char lo = v & 0x0F;
+    put_char(hi < 10 ? (char)('0' + hi) : (char)('A' + hi - 10));
+    put_char(lo < 10 ? (char)('0' + lo) : (char)('A' + lo - 10));
+}
+
+/* 打印 16 位十六进制数，用来判断有没有复位过：
+ * ms10 是 10ms 计数，要 65536 × 10ms ≈ 11 分钟才绕回一次，
+ * 所以看到这个数突然变得很小，就说明中间复位过。 */
+static void prt_hex4(unsigned int v)
+{
+    prt_hex((unsigned char)(v >> 8));
+    prt_hex((unsigned char)v);
+}
+
+static void prt_boot(void)
+{
+    prt_str("\r\n=== SMART CAR (C) : motor + IR + mode + avoid + rec/play ===\r\n");
+    prt_str("IR 46F 15B 44L 43R 40S | 5A/08 gear | 7/8/9 rec/play/clr\r\n");
+}
+
+static void prt_key(void)                   /* 打印原始键值，测键值时靠这一行 */
+{
+    prt_str("\r\nK=");
+    prt_hex(ir_ib2);
+}
+
+static void prt_gear(void)
+{
+    prt_str("\r\ngear ");
+    put_char((char)('0' + gear));
+    prt_str("  duty=");
+    {
+        unsigned char t = gear ? duty_tab[gear - 1] : 0;      /* 0 / 4 / 8 / 12 / 16 / 20 */
+        unsigned char pct = (unsigned char)(t + t + t + t + t);  /* 乘 5 用加法代替，免得又引出库乘法 */
+        if (pct >= 100) {
+            put_char('1');
+            put_char('0');
+            put_char('0');
+        } else if (pct >= 10) {
+            put_char((char)('0' + pct / 10));
+            put_char((char)('0' + pct % 10));
+        } else {
+            put_char((char)('0' + pct));
+        }
+    }
+    prt_str("%");
+}
+
+static void prt_release(void)
+{
+    prt_str("\r\n(key released -> STOP)");
+}
+
+static void prt_actname(void)
+{
+    switch (cur_act) {
+    case ACT_FORWARD: prt_str(" FWD"); break;
+    case ACT_BACK:    prt_str(" BCK"); break;
+    case ACT_LEFT:    prt_str(" LFT"); break;
+    case ACT_RIGHT:   prt_str(" RGT"); break;
+    case ACT_ARC_L:   prt_str(" ARC-L"); break;
+    case ACT_ARC_R:   prt_str(" ARC-R"); break;
+    default:          prt_str(" STP"); break;
+    }
+}
+/* 临时诊断（只在 -Debug 版编入）：每次蜂鸣器被触发就打印是谁触发的。
+ * 排查车停着自己响的时候很有用，把可能的触发点各给一个字母，
+ * 抓一次串口就能定案。后面跟的数字是本次已经响了几声。 */
+static void beepwhy(char c)
+{
+    prt_str("\r\n! BEEP ");
+    put_char(c);
+    prt_str(" n=");
+    prt_hex(av_beep_n);
+}
+#else
+/* DEBUG_UART = 0：所有打印变成"什么都不做"的空宏，
+ * 调用点原样保留，一个字节都不生成（也不会产生"表达式无效"的警告）。 */
+#define put_char(c)
+#define prt_str(s)
+#define prt_boot()
+#define prt_key()
+#define prt_gear()
+#define prt_release()
+#define prt_actname()
+#define prt_hex(v)
+#define beepwhy(c)
+#endif
+
+/*=========================================================================
+ * 十九、驱动电机的统一出口 motor_set(动作, 档位)
+ *   入：act = 动作码，g = 档位 1..5（0 表示停）。
+ *   这里只改方向变量和占空比，真正的输出由定时器中断完成。
+ *   所有要驱动电机的地方都经过它，所以避障要不要改写动作、要不要
+ *   刹停，只在这一个地方判断就够了 —— 这也是有障碍时遥控还能正常
+ *   响应（响铃声、改显示、记记录）的原因，只是最后一步出不去。
+ *=========================================================================*/
+static void motor_set(unsigned char act, unsigned char g)
+{
+    if (g == 0) {                           /* 速度 0 -> 停（本来就没让动，闸门不用管）*/
+        dirbits = DIR_STOP;
+        duty_a = 0;
+        duty_b = 0;
+        return;
+    }
+
+    /* ---- 避障闸门：按状态决定要不要改写动作 ---- */
+    if (avst == AV_TURN) {
+        act = ACT_RIGHT;                    /* 近区：一律改写成原地右转绕开 */
+    } else if (avst == AV_HOLD) {           /* 太近：强制刹停（锁存，等遥控决定）*/
+        cur_act = ACT_STOP;                 /* 真的停车了，当前动作也要清掉，
+                                             * 否则寻光和循迹每趟都会把动作码设回来，
+                                             * 车虽然不动，指示灯却还亮着 */
+        dirbits = DIR_STOP;
+        duty_a = 0;
+        duty_b = 0;
+        return;
+    }
+    /* AV_FREE / AV_HUMAN -> 放行，按原动作走 */
+
+    /* ---- 倒车限速（放在闸门之后，按最终动作判断）----
+     * 数码管显示的还是用户设的档位，这里只把实际出力封顶。 */
+    if (act == ACT_BACK && g > BACK_GEAR_MAX)
+        g = BACK_GEAR_MAX;
+
+    duty_a = duty_tab[g - 1];               /* 1..5 -> 20/40/60/80/100% */
+    duty_b = duty_a;                        /* 默认两轮同速 */
+
+    /* ---- 弧线转弯：两个轮子都正转，只把内轮的占空比调小 ----
+     * 左轮的占空比是 duty_a，右轮是 duty_b；
+     * 方向位用前进，而不是原地转的那两个方向。 */
+    if (act == ACT_ARC_L) {
+        duty_a = arc_tab[g - 1];            /* 左弧线：内轮 = 左轮 */
+        dirbits = DIR_FWD;
+        return;
+    }
+    if (act == ACT_ARC_R) {
+        duty_b = arc_tab[g - 1];            /* 右弧线：内轮 = 右轮 */
+        dirbits = DIR_FWD;
+        return;
+    }
+
+    switch (act) {
+    case ACT_FORWARD: dirbits = DIR_FWD;   break;
+    case ACT_BACK:    dirbits = DIR_BACK;  break;
+    case ACT_LEFT:    dirbits = DIR_LEFT;  break;
+    case ACT_RIGHT:   dirbits = DIR_RIGHT; break;
+    default:                                /* ACT_STOP 及任何意外值都当停车 */
+        dirbits = DIR_STOP;
+        duty_a = 0;
+        duty_b = 0;
+        break;
+    }
+}
+
+/* d3_mix —— D3 指示灯的唯一下游
+ * D3 现在表示避障开关的状态：亮 = 开着，灭 = 关着。
+ * 所有写 P2 的地方都要经过这里，不然总有某一处会把 D3 写错。
+ * P2.0 是 D3，写 0 才亮；P2 和数码管段码共用，只能整字节写。 */
+static unsigned char d3_mix(unsigned char seg)
+{
+    if (avoid_off() == 0)                   /* 录制中避障不参与，D3 也跟着灭 */
+        return (unsigned char)(seg & 0xFE);     /* D3 位清 0 = 亮 */
+    return (unsigned char)(seg | 0x01);         /* D3 位写 1 = 灭 */
+}
+
+/* avoid_off —— 判断超声波避障现在是否不参与。
+ * 规则只有一条：正在录制，或者用户把开关关了。
+ * 录制时为什么要关掉它：录制是人在教车走，如果超声波在近处把动作
+ * 改成原地右转，或者太近时直接刹停，录下来的就不是人想教的东西了，
+ * 甚至会把一条停止当成人的操作记进去。 */
+static bit avoid_off(void)
+{
+    if (recon)
+        return 1;                           /* 录制中 -> 超声波这一路不参与 */
+    if (us_avoid_on)
+        return 0;
+    return 1;                               /* 用户把开关关了 */
+}
+
+/*=========================================================================
+ * 二十、apply_gear —— 把当前档位套到电机和数码管上
+ *   档位 0   停车，数码管显示 0
+ *   档位 1~5 前进，占空比 20/40/60/80/100%，数码管显示档位
+ *   （手动模式下档位不是 0 就前进，这是最早定下来的用法）
+ *=========================================================================*/
+static void apply_gear(void)
+{
+    if (gear == 0)
+        goto stop;
+
+    /* 刹停锁存期间，本地加档也不许把车开起来 —— 锁存的意思是"决定权在遥控手里" */
+    if (avst == AV_HOLD)
+        goto stop;
+
+    /* 这里必须同时把 cur_act 也设上：避障用 cur_act 判断车本来在不在动，
+     * 如果车在走而 cur_act 是 0，避障会以为车停着，就不躲了。 */
+    cur_act = ACT_FORWARD;
+
+    duty_a = duty_tab[gear - 1];
+    duty_b = duty_a;
+    dirbits = DIR_FWD;
+
+    P2 = d3_mix(gear_tab[gear]);
+    return;
+
+stop:
+    cur_act = ACT_STOP;                     /* 真停车了就要清掉，否则 D3 会误亮 */
+    duty_a = 0;
+    duty_b = 0;
+    dirbits = DIR_STOP;
+    P2 = d3_mix(gear_tab[gear]);
+}
+
+/*=========================================================================
+ * 二十一、显示
+ *=========================================================================*/
+/* show_state —— 显示当前档位。
+ * 录制中固定显示 r，在这里统一拦一道，免得被档位数字盖掉。 */
+static void show_state(void)
+{
+    P2 = d3_mix(recon ? DISP_R : gear_tab[gear]);
+}
+
+/* show_mode —— 按模式刷新数码管：手动显示档位，其它模式显示模式代号。 */
+static void show_mode(void)
+{
+    if (mode == MODE_MANUAL) {
+        show_state();
+        return;
+    }
+
+    P2 = d3_mix(mode_tab[mode]);
+}
+
+/*=========================================================================
+ * 二十二、按键扫描（20ms 去抖，松手才认下一次）
+ *   返回：0 没有事件、1 S3 短按（加档）、2 S4 短按（减档）、
+ *         3 S3 长按（切模式）、4 S4 长按（避障开关）。
+ *   S3 和 S4 都是按下以后计时等松手：松手快的是短按，按住超过 1 秒
+ *   算长按。不能按下就动作，否则长按切模式时会顺带多加一档。
+ *=========================================================================*/
+static unsigned char key_scan(void)
+{
+    unsigned int t0;
+
+    if (klast) {                            /* 上一次还按着 -> 先等松手 */
+        if (klast == 2 || klast == 4) {
+            if (KEY_S4) klast = 0;
+        } else {
+            if (KEY_S3) klast = 0;
+        }
+        return 0;
+    }
+
+    if (!KEY_S3) {
+        d_20ms();
+        if (KEY_S3) return 0;               /* 20ms 后已经松开 -> 抖动，不算 */
+        t0 = tick_get();
+        while (!KEY_S3) {                   /* 一直按住 -> 计时判长按 */
+            if ((unsigned int)(tick_get() - t0) >= LP_TMO_TICKS) {
+                klast = 3;
+                return 3;
+            }
+        }
+        klast = 1;
+        return 1;                           /* 短按 = 加档 */
+    }
+
+    if (!KEY_S4) {
+        d_20ms();
+        if (KEY_S4) return 0;
+        t0 = tick_get();
+        while (!KEY_S4) {
+            if ((unsigned int)(tick_get() - t0) >= LP_TMO_TICKS) {
+                klast = 4;
+                return 4;
+            }
+        }
+        klast = 2;
+        return 2;                           /* 短按 = 减档 */
+    }
+
+    return 0;
+}
+
+/*=========================================================================
+ * 二十三、键值 -> 动作码
+ *   正在前进或正在画弧的时候按左右，就是弧线转弯；车停着按就是原地转。
+ *=========================================================================*/
+static bit k_isfwd(void)
+{
+    if (cur_act == ACT_FORWARD) return 1;
+    if (cur_act == ACT_ARC_L)   return 1;
+    if (cur_act == ACT_ARC_R)   return 1;
+    return 0;
+}
+
+static unsigned char key2act(unsigned char v)
+{
+    switch (v) {
+    case KEY_FORWARD: return ACT_FORWARD;
+    case KEY_BACK:    return ACT_BACK;
+    case KEY_LEFT:    return k_isfwd() ? ACT_ARC_L : ACT_LEFT;
+    case KEY_RIGHT:   return k_isfwd() ? ACT_ARC_R : ACT_RIGHT;
+    case KEY_STOP:    return ACT_STOP;
+    default:          return ACT_NONE;
+    }
+}
+
+/*=========================================================================
+ * 二十四、键值 -> 目标模式（遥控数字键 1/2/3 直接选模式）
+ *   出：目标模式号，或 0xFF = 不是模式直选键
+ * =========================================================================*/
+static unsigned char key2mode(unsigned char v)
+{
+    switch (v) {
+    case KEY_M1: return MODE_MANUAL;
+    case KEY_M2: return MODE_LIGHT;
+    case KEY_M3: return MODE_TRACK;
+    default:     return 0xFF;
+    }
+}
+
+/*=========================================================================
+ * 二十五、切换模式（算下一个和直接选模式都走这里）
+ *   两边走同一个出口，切换时要做的收尾只写一遍，免得行为不一致。
+ *=========================================================================*/
+static void mode_goto(unsigned char m)
+{
+    mode = m;
+    lastcmd = LASTCMD_NONE;
+
+    if (m == MODE_MANUAL) {
+        /* 回到手动模式时不停车、接着走：手动模式本来就是档位不为 0 就前进，
+         * 所以按当前档位继续走，档位 0 就还停着。
+         * 这里也要把 cur_act 设上，理由和 apply_gear 那里一样。 */
+        cur_act = gear ? ACT_FORWARD : ACT_STOP;
+        motor_set(cur_act, gear);           /* gear = 0 时这个出口就是停车 */
+        show_state();
+    } else {
+        cur_act = ACT_STOP;                 /* 进自主模式：先清掉遥控动作，交给模式动作接管 */
+        if (gear == 0)
+            gear = GEAR_DEFAULT;            /* 0 档进自主模式车不会动，补一个默认档 */
+        last_line = tick_get();             /* 刷新"最后看到线"的时刻（循迹脱线超时的基准）*/
+        show_mode();
+    }
+
+    beep(BEEP_TICKS);                       /* 切模式提示音 */
+}
+
+static void mode_switch(void)
+{
+    unsigned char m = mode;
+
+    if (m == MODE_PLAY) {                   /* 回放中长按 S3 -> 直接回手动 */
+        mode_goto(MODE_MANUAL);
+        return;
+    }
+    m++;
+    if (m >= NMODES)
+        m = 0;                              /* 绕回手动 */
+    mode_goto(m);
+}
+
+/*=========================================================================
+ * 二十六、寻光（P1.1 左 / P1.0 右，见光 = 低）
+ *   两边都见光 -> 直走；只有一边亮 -> 朝那边转；都遮住 -> 停。
+ *   速度用当前档位，档位 0 时显式停车（不能直接返回，否则会保持上次动作）。
+ * =========================================================================*/
+static void light_step(void)
+{
+    unsigned char act;
+
+    if (gear == 0) {
+        act = ACT_STOP;
+    } else if (!LDR_LEFT) {
+        act = LDR_RIGHT ? ACT_LEFT : ACT_FORWARD;   /* 只有左边亮 -> 左转 */
+    } else {
+        act = LDR_RIGHT ? ACT_STOP : ACT_RIGHT;     /* 只有右边亮 -> 右转 */
+    }
+
+    cur_act = act;                          /* 记下当前动作，显示靠它点 D3 */
+    motor_set(act, gear);
+    show_mode();                            /* 每趟刷新（模式代号 + D3 动/停）*/
+}
+
+/*=========================================================================
+ * 二十七、循迹（左探头 P3.5，右探头 P3.6，压到黑线是高电平）
+ *   两个探头都压线：骑在线上，直走；
+ *   只有左探头压线：线在车的左下方，说明车偏到线的右边了，往左修；
+ *   只有右探头压线：反过来，往右修；
+ *   两个都没压线：脱线了，先直走找线，超过约 0.5 秒就停车。
+ *=========================================================================*/
+static void track_step(void)
+{
+    unsigned char a = 0;
+    unsigned char act;
+
+    if (TRACK_L) a |= 0x02;                 /* bit1 = 左探头 */
+    if (TRACK_R) a |= 0x01;                 /* bit0 = 右探头 */
+
+    if (a == 0) {                           /* 脱线 */
+        if ((unsigned int)(tick_get() - last_line) >= TRK_TMO_TICKS)
+            act = ACT_STOP;                 /* 脱线超时 -> 停车 */
+        else
+            act = ACT_FORWARD;              /* 刚脱线 -> 先直走找回来 */
+    } else {
+        last_line = tick_get();             /* 至少一路压线 -> 刷新"最后看到线"的时刻 */
+        if (a == 1)      act = ACT_RIGHT;   /* 只有右探头压线 */
+        else if (a == 2) act = ACT_LEFT;    /* 只有左探头压线 */
+        else             act = ACT_FORWARD; /* 两个都压线 */
+    }
+
+    cur_act = act;
+    motor_set(act, gear);
+    show_mode();
+}
+
+/*=========================================================================
+ * 二十八、超声波测距（完全非阻塞）
+ *   返回回波高电平的 tick 数（1 tick 约 1.72cm），读不到回波时返回
+ *   US_FAR，一律当成很远 —— 这样传感器坏了也不会把车刹死。
+ *
+ *   做法：发一个触发脉冲以后，状态机交给中断推进，主循环不等。
+ *     空闲 → 发触发 → 等回波上升沿 → 数高电平宽度 → 出结果
+ *   等上升沿等不到时，中断会在一小段时间后自己收场，主循环全程不等，
+ *   所以遥控接收不会被拖住。
+ *
+ *   模块两次测距之间要留够时间（太快它干脆不响应），所以隔一段时间
+ *   才发一次触发。
+ *=========================================================================*/
+
+/* 上电初始化：状态变量全部显式清零。
+ * 不能靠静态初值，因为本工程的启动代码不跑 C 的运行期初始化段。 */
+static void us_init(void)
+{
+    ET0 = 0;                                /* 别让中断看到"改了一半"的状态 */
+    us_st     = US_ST_IDLE;
+    us_wid    = 0;
+    us_wait   = 0;
+    us_got    = 0;
+    us_res    = US_FAR;
+    us_valid  = 0;
+    us_seen   = 0;
+    us_last10 = 0;
+    us_last_d = US_FAR;
+#if AV_SCOPE
+    us_stage  = 0;
+#endif
+    US_TRIG   = 0;                          /* 触发脚平时保持低 */
+    ET0 = 1;
+}
+
+/* 发一个触发脉冲（低约 9us，高约 13us，再拉低），然后把状态机挂到等待。
+ * 高电平宽度是用 _nop_() 一条条展开凑出来的，不依赖循环怎么优化。
+ * 写次序有讲究：先清计数，最后才写状态，这样中断不会读到改了一半的
+ * 数据；结果标志故意不清，万一中断刚好量完，留给下一次取走。 */
+static void us_trigger(void)
+{
+    US_TRIG = 0;
+    _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
+    US_TRIG = 1;
+    _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
+    _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
+    US_TRIG = 0;
+
+    us_wid  = 0;
+    us_wait = 0;
+    us_st   = US_ST_WAIT;                   /* ← 最后写：中断从这里开始接管 */
+}
+
+/* 入口：绝不阻塞，主循环每趟都能放心调。
+ *   出：最近一次量到的 tick 数（≈1.72cm/tick）；US_FAR = 够远 / 还没量到过 */
+static unsigned char us_read(void)
+{
+    unsigned char t10 = ms10_l;             /* 10ms 计数（8 位够：60ms 内不会绕回）*/
+
+    /* ---- 1) 中断刚量完，先把结果取走 ----
+     * 取结果和清标志一起做（中间关一下中断），免得出现取了值没清标志，
+     * 或者清了标志没取值的半截情况。 */
+    if (us_got) {
+        ET0 = 0;
+        us_last_d = us_res;
+        us_got    = 0;
+        us_valid  = 1;
+        ET0 = 1;
+    }
+
+    /* ---- 2) 正在测：先把上次的结果给出去，绝不在这里等 ---- */
+    if (us_st != US_ST_IDLE)
+        return us_valid ? us_last_d : US_FAR;
+
+    /* ---- 3) 两次测距之间要留间隔，间隔不够就沿用上次的结果 ----
+     * 触发太密模块会不响应，那样每次都白等一回，车看起来就像不动。 */
+    if (us_seen && (unsigned char)(t10 - us_last10) < US_GAP_MS10)
+        return us_valid ? us_last_d : US_FAR;
+
+    /* ---- 4) 空闲且够久：发一次触发，然后立刻返回 ---- */
+    us_last10 = t10;
+    us_seen   = 1;
+    us_trigger();
+    return us_valid ? us_last_d : US_FAR;   /* 本次不给新值，等下一次来取 */
+}
+
+/*=========================================================================
+ * 二十九、车头红外近距检测（P3.7，量程只有 1~2cm）
+ *   返回 1 表示检测到东西（已经贴上了），0 表示前面没东西。
+ *   极性不用猜：上电时读一次 P3.7 当作“前方没有东西”的基准，之后电平
+ *   和基准相反就算检测到，这样不管模块是哪种极性都对。
+ *   前提是上电时车头 1~2cm 内不要放东西；万一放着了，也只是这一路
+ *   失效，不会把车卡死，方向是安全的。
+ *=========================================================================*/
+static bit ir_det(void)
+{
+    if (ir_inv) {                           /* 1 = 高电平表示检测到 */
+        if (IR_AVOID) return 1;
+        return 0;
+    }
+    if (IR_AVOID) return 0;                 /* 0 = 低电平表示检测到 */
+    return 1;
+}
+
+/*=========================================================================
+ * 三十、避障
+ *   分成两条互不相干的通道：
+ *
+ *   ① 车头红外对管（量程只有 1~2cm）—— 三种模式都生效
+ *        一检测到就直接刹车。它量程小，能检测到就说明已经贴上了，
+ *        这时候该停不该绕；而且循迹时往右绕会把人推出黑线。
+ *        它没有开关，关不掉，是最后一道保护。
+ *
+ *   ② 超声波（约 5~21cm）—— 受开关控制，只在手动和寻光模式起作用
+ *        距离远：放行；
+ *        距离较近：向右转避让；
+ *        距离太近：停车并等遥控操作（障碍移开也不会自己走）。
+ *
+ *   循迹模式不参与超声波避障：它本来就是贴着线跑，被推开就跑偏了。
+ *   红外没有这个问题，因为它只刹车、不改变动作，所以循迹也用它。
+ *
+ *   锁存的含义：只有按遥控键才能解除。障碍自己移开只是不响了，车还
+ *   停着等人操作。
+ *   有障碍的时候遥控和按键照常响应（响铃、显示、记录），不能拦；
+ *   只有车本来就在动的时候才主动避让，免得车停着自己拐走。
+ *=========================================================================*/
+
+/*-------------------------------------------------------------------------
+ * ir_brake —— 车头红外触发时的处理：直接刹车，不转向也不改模式。
+ *   三种模式共用这一条路。
+ *   这里用停车锁存而不是改写动作，是因为改写会把任何动作都变成原地
+ *   右转，循迹模式下会把车推离黑线。
+ *   只在刚触发时调用一次，之后的间歇提醒由避障判断那一段管。
+ *-------------------------------------------------------------------------*/
+static void ir_brake(void)
+{
+    if (avst == AV_HUMAN)
+        return;                             /* 遥控已接管 -> 放行，别再压住*/
+
+    avst = AV_HOLD;                         /* 锁存：决定权交回遥控 */
+    cur_act = ACT_STOP;
+    motor_set(ACT_STOP, 0);
+    show_mode();                            /* 这里用 show_mode，循迹时能保住显示的模式代号 */
+    av_beep_t = tick_get();                 /* 之后由 av_gate 按间隔继续响（若允许）*/
+    av_beep_n = 0;                          /* 本次锁存的已响次数从 0 起算 */
+#if !IR_BEEP_SILENT
+    av_beep_n = 1;                          /* 入口这一声也算一次 */
+    beep(BEEP_KEY);                         /* 静音时不出这一声 */
+#endif
+}
+
+/*-------------------------------------------------------------------------
+ * av_gate_hold —— 超声波判断出太近时触发。
+ *   手动模式：停车并锁存，等遥控操作；
+ *   寻光模式：退回手动模式，把控制权交还给人。
+ *   车头红外不走这里。
+ *-------------------------------------------------------------------------*/
+static void av_gate_hold(void)
+{
+    if (avst == AV_HUMAN)
+        return;                             /* 遥控已接管，不再反复刹停 */
+
+    if (mode == MODE_LIGHT) {
+        /* 寻光是自动跑的模式，离得太近时应该把控制权交回给人，而不是原地
+         * 锁死等人来按。所以这里不锁存、也不间歇响。 */
+        mode = MODE_MANUAL;
+        avst = AV_HUMAN;
+        cur_act = ACT_STOP;
+        motor_set(ACT_STOP, 0);
+        show_mode();
+        beep(BEEP_KEY);                     /* 寻光：退回手动，响一声*/
+        return;
+    }
+
+    /* ---- 手动：刹停 + 锁存 ---- */
+    avst = AV_HOLD;
+    cur_act = ACT_STOP;
+    motor_set(ACT_STOP, 0);
+    show_mode();
+
+    av_beep_t = tick_get();                 /* 之后由 av_gate 按间隔继续响 */
+    /* 声音只在“新一次遇到障碍”的时候响。读数抖动会让锁存反复解除又重立，
+     * 每次都响的话听起来就是隔一会儿又响一声。
+     * 计数只在障碍真的退远以后才清零。 */
+    if (av_beep_n == 0) {
+        av_beep_n = 1;                      /* 这声算第 1 声 */
+        beepwhy('H');                       /* 诊断：刹停入口那一声 */
+        beep(BEEP_KEY);                     /* 响一声：手动 = 刹停锁存 */
+    }
+}
+
+#if DEBUG_UART
+/* 避障诊断（只在 -Debug 版编入）：状态有变化或者每隔 0.5 秒打一行，
+ * 用来分清到底是车头红外在刹、超声波没量到、还是开关被关掉了。
+ * 打印内容依次是：红外有没有检测到、闸门状态、最近一次测距值、
+ * 超声波开关、当前模式。 */
+static unsigned char av_dbg_seen;
+static unsigned char av_dbg_ir, av_dbg_st, av_dbg_d, av_dbg_of, av_dbg_md;
+static unsigned int  av_dbg_t;
+#endif
+
+static void av_gate(void)
+{
+    unsigned char d;
+
+#if DEBUG_UART
+    {
+        unsigned char ir = ir_det() ? 1 : 0;
+        if (!av_dbg_seen || ir != av_dbg_ir || avst != av_dbg_st ||
+            (avoid_off() ? 0 : 1) != av_dbg_of || mode != av_dbg_md ||
+            (unsigned int)(tick_get() - av_dbg_t) >= 5000) {    /* 5000 tick ≈ 0.5s */
+            av_dbg_t  = tick_get();
+            av_dbg_seen = 1;
+            av_dbg_ir = ir;
+            av_dbg_st = avst;
+            av_dbg_of = avoid_off() ? 0 : 1;
+            av_dbg_md = mode;
+            prt_str("\r\n! IR="); put_char((char)('0' + ir));
+            prt_str(" AV=");      put_char((char)('0' + avst));
+            prt_str(" D=");       prt_hex(av_dbg_d);
+            prt_str(" OF=");      put_char((char)('0' + (avoid_off() ? 0 : 1)));
+            prt_str(" M=");       put_char((char)('0' + mode));
+            prt_str(" T=");       prt_hex4(ms10_get());   /* 开机计时：突然变小 = 复位过 */
+        }
+    }
+#endif
+
+    /* ---- 超声波这一路不参与的时候，要顺手把旧的锁存解开 ----
+     * 录制中或者用户关掉了开关时它不参与，但如果状态还停在锁存上，
+     * 驱动出口会一直把车按住，表现就是一进录制车就走不动。
+     * 车头红外不受影响，紧接着那一步还是会刹停。 */
+    if (avoid_off() && avst == AV_HOLD)
+        avst = AV_FREE;
+
+    /* ---- 锁存状态要放在最前面判断 ----
+     * 否则每趟都调用一次刹车，会变成连续鸣叫，而不是隔一会儿响一声。
+     * 锁存期间这里只管要不要继续响。 */
+    if (avst == AV_HOLD) {
+#if IR_BEEP_SILENT
+        if (ir_det())
+            return;                         /* 红外贴着就静音 */
+#endif
+        /* ---- 到这里说明车头红外没有贴着 ---- */
+
+                /* ① 超声波不参与的情形 -> 没有该响的理由 */
+        if (avoid_off() || mode == MODE_TRACK)
+            return;
+
+        /* ② 障碍退远了：要持续一段时间才算真的让开（防止读数抖动） */
+        if (us_read() >= US_CLEAR) {
+            if (!av_clear_on) {             /* 刚开始"退远"计时 */
+                av_clear_on = 1;
+                av_clear_t = tick_get();
+                return;
+            }
+            if ((unsigned int)(tick_get() - av_clear_t) >= AV_CLEAR_TICKS)
+                av_beep_n = 0;              /* 真走了 -> 下次再靠近才会重新提醒 */
+            return;                         /* 退到安全距离 -> 静音 */
+        }
+        av_clear_on = 0;                    /* 又近了 -> 撤销"已退远"的计时 */
+
+        /* ③ 提醒音：一次遇到障碍总共响 AVBEEP_N 声（含刹停那一声） */
+        if (av_beep_n >= AVBEEP_N)
+            return;                         /* 提醒够了就安静，锁存不变，车还停着等遥控 */
+        if ((unsigned int)(tick_get() - av_beep_t) >= AVBEEP_TICKS) {
+            av_beep_t = tick_get();
+            av_beep_n++;                    /* 记数，响够 AVBEEP_N 声就停 */
+            beepwhy('L');                   /* 诊断：锁存期间的间歇提醒 */
+            beep(BEEP_KEY);
+        }
+        return;
+    /* 只是不响了，车还停着等遥控操作，锁存没有解除 */
+    }
+
+    /* ---- ① 车头红外：全局生效，触发就直接刹车 ----
+     * 放在这里、而且在循迹早退之前，这样循迹也受它保护。 */
+    if (ir_det()) {
+        ir_brake();
+        return;
+    }
+
+    /* ---- ② 循迹模式不参与超声波避障 ----
+     * 要显式把状态清掉，否则它会卡在转向避让上，把循迹的每个动作都改成
+     * 原地右转，车就一直打转。
+     * 循迹并不是没有避障，它还有车头红外刹车这一道。 */
+    if (mode == MODE_TRACK) {
+        avst = AV_FREE;
+        return;
+    }
+
+    /* ---- 倒车的时候超声波不参与 ----
+     * 超声波朝前，倒车时它的读数没有意义：按近区改写会让车倒着倒着突然
+     * 原地打转，按太近刹停又会拦住“倒着离开前方障碍”这种正常动作。
+     * 倒车的安全交给限速和限时兜底。车头红外在上面已经处理过，照旧生效。 */
+    if (cur_act == ACT_BACK) {
+        avst = AV_FREE;
+        motor_set(ACT_BACK, gear);          /* 把可能残留的"原地右转"改写回来 */
+        return;
+    }
+
+    /* ---- ③ 超声波：受手动开关控制（长按 S4 或遥控数字键 5）；
+     *      录制中一律不参与 ---- */
+    if (avoid_off()) {
+        avst = AV_FREE;
+        if (cur_act != 0) motor_set(cur_act, gear);
+        return;
+    }
+
+    d = us_read();
+#if DEBUG_UART
+    av_dbg_d = d;                           /* 诊断：记下这次实测的距离 */
+#endif
+    if (d < US_STOP) {                      /* 太近（< 5cm）*/
+        av_gate_hold();
+        return;
+    }
+
+    /* ---- 已经不近了：解除接管状态，避障重新生效 ---- */
+    avst = AV_FREE;
+
+    if (d < US_NEAR) {                      /* 近区：原地右转避让 */
+        avst = AV_TURN;
+        if (cur_act == 0) return;           /* 本来就没在动 -> 别自己窜出去 */
+        motor_set(ACT_RIGHT, gear);
+        return;
+    }
+
+    /* ---- 距离够远：放行，并把原来的动作重新套上，免得一直右转 ---- */
+    if (cur_act == 0) return;
+    motor_set(cur_act, gear);
+}
+
+/*=========================================================================
+ * 三十一、超声波避障开关（长按 S4，或者遥控数字键 5）
+ *   打开的时候响两声，关掉的时候响一声长的。
+ *   它只管超声波，车头红外是全局的，这个开关关不掉。
+ *   关掉的时候顺手把锁存也解掉，不然车会一直停着不动。
+ *   如果这时候车头红外还贴着东西，下一趟还是会立刻刹停，这是正常的。
+ *=========================================================================*/
+static void avoid_toggle(void)
+{
+    us_avoid_on = !us_avoid_on;
+    beepwhy('T');                           /* 诊断：避障开关被触发 */
+
+    if (us_avoid_on) {
+        beep(BEEP_KEY);                     /* 开：两声短响 */
+        d_20ms();
+        d_20ms();
+        beep(BEEP_KEY);
+    } else {
+        avst = AV_FREE;                     /* 关：解开锁存（理由见上面）*/
+        beep(BEEP_TICKS);                   /*     一声长响 */
+    }
+
+    /* 立刻刷新一下 D3。车停着的时候没有别的地方写 P2，
+     * 不刷的话指示灯会停在旧状态上。 */
+    show_mode();
+}
+
+/*=========================================================================
+ * 三十二、测量一段电平持续的时间（红外解码就靠它）
+ *   入：level = 0 量低电平，1 量高电平；
+ *       cap = 最长的等待时间（0 表示用默认值）
+ *   出：1 表示等到超时都没变化，0 表示已经变化，duration 是量到的时长
+ *
+ *   这是整个程序里对时间最敏感的地方，有两条要注意：
+ *     1) 时基直接在这里读，不调用 tick_get()。函数调用一圈要多花不少
+ *        时间，而遥控最短的脉冲只有 0.56ms，循环太慢会整圈跳过一次
+ *        电平变化。
+ *     2) 循环里只做读数和比较，不要加别的东西。
+ *=========================================================================*/
+static bit meas_level(void)
+{
+    unsigned int t0;
+    unsigned int d;
+    unsigned char hi, lo;
+
+    ET0 = 0;                                /* 起始时刻：内联原子读 */
+    hi = tick_h;
+    lo = tick_l;
+    ET0 = 1;
+    /* 起始时刻直接赋给 t0 就行，不需要另外占一个全局变量 */
+    t0 = ((unsigned int)hi << 8) | lo;
+
+    for (;;) {
+        ET0 = 0;                            /* 当前时刻：内联原子读 */
+        hi = tick_h;
+        lo = tick_l;
+        ET0 = 1;
+        d = (unsigned int)((((unsigned int)hi << 8) | lo) - t0);
+
+        if (ml_cap) {                       /* 有明确限时：到点就算超时 */
+            if (d >= ml_cap) {
+                ml_dur = d;
+                return 1;
+            }
+        } else {                            /* 没有限时：超过 25.6ms 就算超时 */
+            if (d > 255) {
+                ml_dur = d;
+                return 1;
+            }
+        }
+
+        if (ml_level) {                     /* 量高 -> 等它变低 */
+            if (!IR_IN) {
+                ml_dur = d;
+                return 0;
+            }
+        } else {                            /* 量低 -> 等它变高 */
+            if (IR_IN) {
+                ml_dur = d;
+                return 0;
+            }
+        }
+    }
+}
+
+/*=========================================================================
+ * 三十三、红外遥控解码（NEC 协议）
+ *   接收头平时输出高电平，收到 38kHz 载波时输出低电平。
+ *   完整帧：9ms 低 + 4.5ms 高 + 32 位数据；
+ *     每一位先是一段 0.56ms 的低电平，再看高电平长短：
+ *     0.56ms 是 0，1.69ms 是 1，低位在前；
+ *     32 位依次是地址、地址取反、命令、命令取反，取反用来校验。
+ *   重复帧：9ms 低 + 2.25ms 高，之后一直是高，表示这个键还按着。
+ *
+ *   出口 irstat：0 收到完整帧（键值在 ir_ib2 里）
+ *                1 一直没有信号
+ *                2 有信号但没解成合法的帧
+ *                3 重复帧
+ *=========================================================================*/
+
+/* 清掉一次接收的中间状态 */
+static void ir_reset(void)
+{
+    ml_cap = 0;
+    ir_ledlo = 0;
+    ir_ledhi = 0;
+    ir_short = 0;
+    irstat = 1;                             /* 先当"连下降沿都没等到" */
+}
+
+/* 把当前位（1）写进 ir_ib0..ir_ib3 */
+static void ir_setbit(unsigned char idx)
+{
+    switch (idx) {
+    case 0:  ir_ib0 |= ir_maskb; break;
+    case 1:  ir_ib1 |= ir_maskb; break;
+    case 2:  ir_ib2 |= ir_maskb; break;
+    default: ir_ib3 |= ir_maskb; break;
+    }
+}
+
+/* 收 32 位数据并校验；出：1 = 得到合法完整帧 */
+static bit ir_decode_bits(void)
+{
+    ir_ib0 = 0;
+    ir_ib1 = 0;
+    ir_ib2 = 0;
+    ir_ib3 = 0;
+    ir_bits = 32;
+    ir_ptridx = 0;
+    ir_maskb = 0x01;
+
+    while (ir_bits) {
+        /* ---- 每位先一段低电平（约 0.56ms），必须结束 ---- */
+        ml_level = 0;
+        ml_cap = 0;
+        if (meas_level())
+            return 0;
+
+        /* ---- 再一段高电平：0.56ms = 位0，1.69ms = 位1 ---- */
+        ml_level = 1;
+        if (ir_bits == 1) {
+            /* 最后一位后面是空闲高电平，不能等它变低：
+             * 只量到 1.2ms 就下结论，到点还高着 = 位1 */
+            ml_cap = IR_BITCAP;
+            if (meas_level())
+                ir_setbit(ir_ptridx);
+        } else {
+            ml_cap = 0;
+            if (meas_level())
+                return 0;
+            if (ml_dur >= IR_BIT_TH)
+                ir_setbit(ir_ptridx);
+        }
+
+        /* ---- 每收一位（含 0 位）都推进掩码 ---- */
+        ir_maskb <<= 1;
+        if (ir_maskb == 0) {
+            ir_maskb = 0x01;
+            ir_ptridx++;
+        }
+        ir_bits--;
+    }
+
+    /* ---- 校验：地址与地址取反、命令与命令取反必须互补 ---- */
+    if ((unsigned char)~ir_ib0 != ir_ib1) return 0;
+    if ((unsigned char)~ir_ib2 != ir_ib3) return 0;
+    return 1;
+}
+
+/* 从"已经看到下降沿"开始解码，直到出结果 */
+static void ir_decode(void)
+{
+    /* ---- 1) 引导码低电平，标称 9ms ---- */
+    ml_level = 0;
+    ml_cap = 0;
+    if (meas_level()) {                     /* 低电平一直不结束 */
+        irstat = 2;
+        return;
+    }
+    ir_ledlo = (unsigned char)ml_dur;       /* 先存下来：不合格时诊断要用 */
+    if (ml_dur > 255) {                     /* 超过 25.6ms -> 不是 NEC */
+        irstat = 2;
+        return;
+    }
+    if (ml_dur < IR_LEAD_MIN || ml_dur > IR_LEAD_MAX) {
+        irstat = 2;
+        return;
+    }
+
+    /* ---- 2) 引导码高电平：靠“会不会变低”来区分完整帧和重复帧 ----
+     * 完整帧后面接着第一位的低电平，会变低；重复帧后面一直是高，不会变低。
+     * 所以量到 6ms 就收手：提前变低就是完整帧，到点还高就是重复帧。
+     * 不能像量低电平那样一直等下去，否则重复帧必然超时，
+     * 松键停车也就永远刷不到时刻了。 */
+    ml_level = 1;
+    ml_cap = IR_LEADHCAP;
+    if (meas_level()) {                     /* 6ms 还高着 -> 重复帧 */
+        ir_ledhi = (unsigned char)ml_dur;
+        irstat = 3;
+        return;
+    }
+    ir_ledhi = (unsigned char)ml_dur;
+    if (ml_dur > 255) {
+        irstat = 3;
+        return;
+    }
+    if (ml_dur < IR_REP_MIN) {              /* < 1.2ms -> 噪声，不是引导码 */
+        irstat = 2;
+        return;
+    }
+    if (ml_dur < IR_LEADH_MIN)
+        ir_short = 1;                       /* 1.2~2.5ms：待定，看 32 位解不解得出来 */
+
+    /* ---- 3) 收 32 位 ---- */
+    if (ir_decode_bits()) {
+        irstat = 0;                         /* 完整帧，键值在 ir_ib2 */
+        return;
+    }
+
+    /* ---- 32 位没解出来：区分"短引导码的帧解失败"和"重复帧" ---- */
+    irstat = ir_short ? 3 : 2;
+}
+
+/*=========================================================================
+ * 三十四、收一帧（会等待的版本，手动模式用）
+ *   等下降沿最长等 25.6ms。这段时间按键不响应，但 25ms 的延迟人手感觉
+ *   不出来；而且必须一直听着红外，否则会从引导码中间开始量，整帧作废。
+ *=========================================================================*/
+static void ir_recv(void)
+{
+    unsigned int t0;
+
+    ir_reset();
+
+    /* ---- 等 IR_IN 下降沿 ---- */
+    t0 = tick_get();
+    while (IR_IN) {
+        if ((unsigned int)(tick_get() - t0) > 255)
+            return;                         /* 超过 25.6ms 还没边沿 -> 真没信号，保持 irstat=1 */
+    }
+
+    ir_decode();
+}
+
+/*=========================================================================
+ * 三十五、收一帧（不等待的版本，回放的时候用）
+ *   和上面那个的唯一区别：不等下降沿，看一眼没有就直接返回，其余一样。
+ *   回放时主循环不能有 25ms 级别的等待，否则动作切换的时间就不准了。
+ *=========================================================================*/
+static void ir_recv_nb(void)
+{
+    ir_reset();
+    if (IR_IN)
+        return;                             /* 空闲高 -> 没有帧，立刻返回 */
+    ir_decode();
+}
+
+/* 把"最后一次收到红外帧的时刻"更新为现在 */
+static void stamp_now(void)
+{
+    lastt = tick_get();
+}
+
+/* 见到边沿但没解成合法帧时，打印一次实测脉宽，做了限流免得刷屏 */
+static void ir_errpr(void)
+{
+#if DEBUG_UART
+    if ((unsigned int)(tick_get() - last_err) < ERRTMO_TICKS)
+        return;
+    last_err = tick_get();
+    prt_str("\r\n! IR rej lo=");
+    prt_hex(ir_ledlo);
+    prt_str(" hi=");
+    prt_hex(ir_ledhi);
+    prt_str(" a=");
+    prt_hex(ir_ib0);
+    prt_str(" b=");
+    prt_hex(ir_ib1);
+    prt_str(" c=");
+    prt_hex(ir_ib2);
+    prt_str(" d=");
+    prt_hex(ir_ib3);
+#endif
+}
+
+/*=========================================================================
+ * 三十六、处理一个按下的键（顺序有讲究，见每一步的说明）
+ *=========================================================================*/
+static void do_key(void)
+{
+    unsigned char tgt, act;
+
+    /* ---- ① 遥控一按，就把决定权交回给人 ----
+     * 如果正处在停车锁存状态，就地解除。放在最前面，
+     * 所以按任意键都算人来接管。 */
+    if (avst == AV_HOLD)
+        avst = AV_HUMAN;
+
+    /* ---- ② 三个功能键优先处理，且不再往下走常规流程 ----
+     *（不进 key2mode、不进 key2act，所以不会驱动电机，也不会被当成"不认识的键"）*/
+    if (ir_ib2 == KEY_REC)  { rec_key();  return; }
+    if (ir_ib2 == KEY_CLR)  { clr_key();  return; }
+    if (ir_ib2 == KEY_PLAY) { play_key(); return; }
+
+    prt_key();                              /* 打印原始键值（测其余键值就靠这一行）*/
+
+    /* ---- 遥控数字键 5 = 超声波避障开关（和长按 S4 是一个功能）----
+     * 放在打印键值之后，这样诊断版能把它打出来，排查“按了没反应”就靠它。
+     * 这里不限制录制中不能按：录制记的是人的操作意图，避障开关不进记录。
+     * 回放中按它不生效，回放只认停止、方向和回放键。 */
+    if (ir_ib2 == KEY_AVOID) {
+        avoid_toggle();
+        return;
+    }
+
+    /* ---- ③ 遥控数字键 1/2/3 直接选模式 ---- */
+    tgt = key2mode(ir_ib2);
+    if (tgt != 0xFF) {
+        if (recon) {
+            /* 录制中不允许切换模式：录制中切到寻光、循迹这类自动模式没有意义，
+             * 而且模式动作会改掉当前动作，把记录弄乱。这里响两声拒绝。 */
+            beep(BEEP_KEY);
+            d_20ms();
+            beep(BEEP_KEY);
+            return;
+        }
+        if (tgt == mode) {                  /* 已经就是这个模式 -> 只响一声，不做动作 */
+            beep(BEEP_KEY);
+            return;
+        }
+        mode_goto(tgt);
+        return;
+    }
+
+    /* ---- ④ 遥控加/减档（全局功能：任何模式下都生效）---- */
+    if (ir_ib2 == KEY_SPD_UP) {
+        if (gear >= MAXGEAR)
+            return;
+        gear++;
+    } else if (ir_ib2 == KEY_SPD_DN) {
+        if (gear == 0)
+            return;
+        gear--;
+    } else {
+        /* ---- ⑤ 方向键和停止键 -> 动作 ----
+         * 这里不做同一个键的去重：同键第二次真按下去也必须生效，
+         * 否则加减档只能调一次，模式键连按也会失效。 */
+        act = key2act(ir_ib2);
+
+        if (act == ACT_NONE) {              /* 不认识的键：只打印，不动电机 */
+            prt_str(" UNKNOWN KEY (no motor change)");
+            return;
+        }
+
+        if (act == ACT_STOP) {              /* 停止键：最高优先级 */
+            cur_act = ACT_STOP;
+            motor_set(ACT_STOP, 0);
+        } else {
+            if (gear == 0)
+                gear = GEAR_DEFAULT;        /* 0 档按方向键 -> 自动跳默认档，否则车不动 */
+            cur_act = act;
+            motor_set(act, gear);
+        }
+
+        show_state();                       /* 显示档位，D3 亮 = 正在动 */
+        prt_actname();
+        beep(BEEP_KEY);                     /* 响一声（不用看串口也知道收到了）*/
+        return;
+    }
+
+    /* ---- 加/减档的收尾：正在动就用新档位重新套用当前动作 ---- */
+    if (cur_act != 0)
+        motor_set(cur_act, gear);
+    show_state();
+    beep(BEEP_KEY);
+    prt_gear();
+}
+
+/*=========================================================================
+ * 三十七、松键停车
+ *   最后一次收到遥控信号之后约 0.3 秒没有新信号，就当作松手了。
+ *   其中前进是特殊的：按一下就一直走，直到按停止键或者按别的方向键；
+ *   后退、左右转和弧线都是按住才走。
+ *   刚被刹停、遥控已经接手但还没离开危险区的时候，前进也改成按住才走，
+ *   更安全一些。这段接管状态在一次动作结束时就收回，避障重新生效。
+ *=========================================================================*/
+static void ir_holdchk(void)
+{
+    unsigned int d;
+
+    if (cur_act == ACT_STOP)
+        return;                             /* 本来就在停 -> 不用管 */
+
+    if (avst != AV_HUMAN && !recon) {       /* 录制中不做“前进按一下一直走”那一套 */
+        if (cur_act == ACT_FORWARD)
+            return;                         /* 前进：锁定式，不因松手停车 */
+    }
+
+    d = (unsigned int)(tick_get() - lastt);
+    if (d < HOLD_TMO_TICKS)
+        return;                             /* 还没到 300ms */
+
+    /* 超时了，说明松手了。弧线松手回到前进（前进本来就是按一下一直走），
+     * 其它动作松手就停车。 */
+    if (!recon && (cur_act == ACT_ARC_L || cur_act == ACT_ARC_R))
+        cur_act = ACT_FORWARD;
+    else
+        cur_act = ACT_STOP;
+
+    motor_set(cur_act, cur_act == ACT_STOP ? 0 : gear);
+    show_state();                           /* 显示也要跟着更新，否则 D3 还亮着"在动" */
+    lastcmd = LASTCMD_NONE;                 /* 允许同一个键再按一次 */
+
+    if (avst == AV_HUMAN)
+        avst = AV_FREE;                     /* 接管只用一次 -> 避障重新武装 */
+    prt_release();
+}
+
+/* back_guard —— 倒车限时。
+ * 手动模式和录制中，连续倒车超过一定时间就自动停车并响两声。
+ * 因为倒车时看不到车后，软件帮不上忙，只能不让它一直倒下去。
+ * 想接着倒，就松开后退键再按一次。
+ * 只在手动模式下生效：回放要忠实还原录下来的动作，不能被它截断。 */
+static void back_guard(void)
+{
+    if (mode != MODE_MANUAL)                /* 回放/自主模式不改写 */
+        return;
+
+    if (cur_act != ACT_BACK) {              /* 没在倒车 -> 复位计时 */
+        back_on = 0;
+        return;
+    }
+
+    if (!back_on) {                         /* 刚开始倒车：记下时刻 */
+        back_on = 1;
+        back_t0 = tick_get();
+        return;
+    }
+
+    if ((unsigned int)(tick_get() - back_t0) < BACK_TMO_TICKS)
+        return;                             /* 还没到时限 */
+
+    /* ---- 到时限：停车 + 两声（与其它提示音区分）---- */
+    back_on = 0;
+    cur_act = ACT_STOP;
+    motor_set(ACT_STOP, 0);
+    show_state();
+    beepwhy('B');                           /* 诊断：倒车限时自停 */
+    beep(BEEP_KEY);
+    d_20ms();
+    beep(BEEP_KEY);
+}
+
+/* prox_beep —— 超声近距提示音（相当于倒车雷达）。
+ * 只在超声波避障关掉的时候才响：那时候车不会自己刹车了，
+ * 就用响的急缓把距离告诉人。
+ * 距离门限直接复用避障那一套，不另外定：
+ *   很远或者读不到 -> 不响；
+ *   较近 -> 隔一段时间响一声，越近间隔越短；
+ *   很近 -> 连续响。 */
+#define PROX_INT_MIN   1000     /* 最近间歇档的间隔：1000 tick ≈ 100ms */
+#define PROX_INT_SH    9        /* 每远 1 tick，间隔 + 2^9 = 512 tick ≈ 51ms */
+#define PROX_SOLID     200      /* "连续响"每次续上的半周期数（200 ≈ 100ms > 主循环周期）*/
+#define PROX_HOLD_TICKS 20000   /* 停车以后继续提示 2.0 秒（20000 × 99.83us），响完自动静音 */
+
+static void prox_beep(void)
+{
+    unsigned int d, wait;
+
+    if (avoid_off() == 0)                   /* 避障在参与 -> 不响（避障自己负责）*/
+        return;                             /* 录制中也算不参与，所以提示音照响 */
+    if (mode == MODE_PLAY || mode == MODE_TRACK)
+        return;
+
+    /* ---- 倒车的时候不响，顺便把状态清掉，免得停车以后又接着响 ---- */
+    if (cur_act == ACT_BACK) {
+        prox_moving = 0;
+        prox_hold = 0;                      /* 倒车不算"停车宽限" */
+        return;
+    }
+
+    /* ---- 停车以后只再响约 2 秒：停下的瞬间还能听出离墙有多远 ---- */
+    if (cur_act == ACT_STOP) {
+        if (prox_moving) {                  /* 刚从"动"变成"停"：开始 2s 宽限 */
+            prox_moving = 0;
+            prox_hold = 1;
+            prox_stop_t = tick_get();
+        }
+        if (prox_hold && (unsigned int)(tick_get() - prox_stop_t) >= PROX_HOLD_TICKS)
+            prox_hold = 0;                  /* 宽限到点 -> 永久静音 */
+        if (!prox_hold)
+            return;                         /* 停稳超过 2s -> 一声都不响 */
+    } else {
+        prox_moving = 1;
+        prox_hold = 0;                      /* 又动了 -> 撤销静音（重新武装）*/
+    }
+
+    d = us_read();                          /* 非阻塞；内部已做 ≥60ms 节流 */
+    if (d >= US_NEAR)                       /* 够远 / 读不到(US_FAR) -> 不响 */
+        return;
+
+    if (d < US_STOP && cur_act != ACT_STOP) {   /* 最近档 且正在动 -> 连续响 */
+        beepwhy('P');                       /* 诊断：近距连续响 */
+        beep(PROX_SOLID);
+        return;
+    }
+
+    /* 响的间隔：越近间隔越短。
+     * 算间隔用移位，不用乘法 —— 乘法会让编译器去调库函数，
+     * 本工程是手工排地址的，能少一个外部符号就少一个。
+     * 车停着的时候最近档也不长鸣，用最急的间歇，免得停在墙前一直叫。 */
+    if (d < US_STOP)
+        wait = PROX_INT_MIN;
+    else
+        wait = PROX_INT_MIN + ((unsigned int)(d - US_STOP) << PROX_INT_SH);
+    if ((unsigned int)(tick_get() - prox_t) < wait)
+        return;
+    prox_t = tick_get();
+    beepwhy('Q');                           /* 诊断：近距间歇响 */
+    beep(BEEP_KEY);
+}
+
+/*=========================================================================
+ * 三十八、录制
+ *   录制不是一种模式，它是加在手动模式上的一个标志，因为录制的时候
+ *   遥控键仍然要能开动小车（人得把车开给车看）。
+ *   记的是每 10ms 一次的动作和档位，也就是人的操作意图：避障把动作
+ *   改成原地右转时，记录里还是人按的那个动作。
+ *   所以演示的时候最好让前方通畅：录制时车会绕障，回放时不会，
+ *   回放遇到障碍是直接停车结束。
+ *=========================================================================*/
+
+/* 立刻停车 */
+static void rec_halt(void)
+{
+    cur_act = ACT_STOP;
+    motor_set(ACT_STOP, 0);
+}
+
+/* 把当前的动作和时长写成第 recn 条记录。
+ * 返回 1 表示写好了，0 表示已经写满没写进去。
+ * 开头还没开始动的时候不记（省得开头挂一条停止不动），
+ * 但已经开始以后，停止动作也要记，因为动作序列里需要它。 */
+static bit rec_commit(void)
+{
+    unsigned int addr;
+
+    if ((pack & ACTPK_MASK) == 0 && recn == 0) {
+        cur_dur = 0;                        /* 前导 STOP -> 丢弃 */
+        return 1;
+    }
+
+    if (recn >= REC_MAX) {
+        recfull = 1;                        /* 已满 80 条 */
+        return 0;
+    }
+
+    addr = REC_ADDR(recn);
+    XBYTE[REC_BASE + addr]     = pack;      /* Byte0 = (动作<<4)|档位 */
+    XBYTE[REC_BASE + addr + 1] = (unsigned char)cur_dur;          /* 时长低 */
+    XBYTE[REC_BASE + addr + 2] = (unsigned char)(cur_dur >> 8);   /* 时长高 */
+
+    recn++;
+    if (recn >= REC_MAX)
+        recfull = 1;
+
+    cur_dur = 0;
+    return 1;
+}
+
+/* 空记录 / 非法操作提示：闪 'E' + 两声短响，然后恢复显示 */
+static void rec_err(void)
+{
+    P2 = d3_mix(DISP_E);
+    beep(BEEP_KEY);
+    d_20ms();
+    d_20ms();
+    beep(BEEP_KEY);
+    d_20ms();
+    d_20ms();
+    show_state();
+}
+
+/* 录满 80 条：自动停止录制、停车、显示 F 并长响提示；
+ * 已经录到的数据保留，仍然可以回放。 */
+static void rec_fullstop(void)
+{
+    unsigned char i;
+
+    recon = 0;
+    cur_dur = 0;
+    rec_halt();
+
+    for (i = 0; i < 20; i++) {              /* 20 × 20ms = 400ms */
+        P2 = d3_mix(DISP_F);
+        beep(BEEP_TICKS);
+        d_20ms();
+    }
+    show_state();
+}
+
+/* 录制采样：主循环每趟调用一次，内部按 10ms 时基判断到点了没有。
+ *   ① 算出距上次采样过了多久，还没到就返回；
+ *   ② 把当前动作和档位打包，和上一条比：
+ *        一样 -> 时长累加（这样主循环偶尔卡一下也不会丢时间）；
+ *        不一样 -> 先把上一条存好，再开新的一条；
+ *   ③ 一条太长或者计数溢出就拆成两条，总时长不变。 */
+static void rec_sample(void)
+{
+    unsigned int now, delta, nd;
+    unsigned char pk;
+
+    if (recfull) {                          /* 已满 -> 不再采，去收尾 */
+        rec_fullstop();
+        return;
+    }
+
+    now = ms10_get();
+    delta = (unsigned int)(now - samp);
+    if (delta == 0)
+        return;                             /* 还不到一个 10ms */
+    samp = now;                             /* 基准推进到"现在" */
+
+    pk = (unsigned char)(((cur_act << 4) & ACTPK_MASK) | (gear & GEAR_MASK));
+
+    if (pk == pack) {
+        nd = (unsigned int)(cur_dur + delta);
+        if (nd < cur_dur) {                 /* 16 位溢出 -> 拆条 */
+            rec_commit();
+            return;
+        }
+        cur_dur = nd;
+        if ((cur_dur >> 8) >= RECCAP_H)     /* 到单条上限 -> 拆条 */
+            rec_commit();
+        return;
+    }
+
+    /* 动作/档位变了：提交上一条，再开新的一条 */
+    if (rec_commit())
+        pack = pk;
+}
+
+/* 进入录制：停车 -> 清空上一段 -> 复位累计/基准 -> recon=1 -> 显示 'r' + 响一声 */
+static void rec_enter(void)
+{
+    rec_halt();                             /* 录制从静止开始 */
+    recn = 0;                               /* 清空上一段未保存记录 */
+    recfull = 0;
+    cur_dur = 0;
+    samp = ms10_get();                      /* 采样基准 = 现在 */
+    pack = (unsigned char)(gear & GEAR_MASK);   /* pack = (STOP << 4) | 当前档位 */
+    recon = 1;
+    show_state();                           /* recon = 1 -> 显示 'r' */
+    beep(BEEP_TICKS);
+}
+
+/* 退出录制：封存余量 -> 回档位显示 + 响两声 */
+static void rec_exit(void)
+{
+    if (cur_dur != 0)
+        rec_commit();                       /* 最后一段还有内容就封存 */
+    recon = 0;
+    cur_dur = 0;
+    show_state();                           /* recon 已清 -> 显示档位 */
+    beep(BEEP_TICKS);                       /* 退出响两声（与进入的一声区分）*/
+    d_20ms();
+    beep(BEEP_TICKS);
+}
+
+/* 录制键（数字键 7）：录制中 -> 退出；否则 -> 进入 */
+static void rec_key(void)
+{
+    if (recon) rec_exit();
+    else       rec_enter();
+}
+
+/* 清空键（数字键 9）：只有车停着、而且不在回放的时候才能清，防止误触；
+ * 录制中按也可以，等于丢掉这一段并退出录制。 */
+static void clr_key(void)
+{
+    if (mode == MODE_PLAY)
+        return;                             /* 回放中 -> 忽略（先退出回放再清）*/
+    if (cur_act != ACT_STOP)
+        return;                             /* 车在动 -> 忽略（防误清）*/
+
+    recon = 0;
+    recn = 0;
+    recfull = 0;
+    cur_dur = 0;
+    show_state();
+    beep(BEEP_TICKS);                       /* 清空响两声（与进入录制的一声区分）*/
+    d_20ms();
+    beep(BEEP_TICKS);
+}
+
+/*=========================================================================
+ * 三十九、回放
+ *   回放走主循环最前面的独立分支，不进避障判断，也不扫描按键。
+ *   因为避障在近处的动作是改成原地右转绕过去，而回放要求遇到障碍
+ *   立刻停车结束、不擅自改路径，两者正好相反。
+ *   计时用中断里维护的 10ms 节拍，不靠主循环数。
+ *   档位从记录里恢复，不然速度不对、落点也就复现不出来；退出回放时
+ *   再恢复成进入之前的档位。
+ *=========================================================================*/
+
+/* 读第 playidx 条记录 -> 拆包 -> 设档位 + 驱动电机 + 记起始时刻 */
+static void play_load(void)
+{
+    unsigned int addr = REC_ADDR(playidx);
+    unsigned char pk = XBYTE[REC_BASE + addr];
+
+    play_dur = (unsigned int)XBYTE[REC_BASE + addr + 1]
+             | ((unsigned int)XBYTE[REC_BASE + addr + 2] << 8);
+
+    gear    = pk & GEAR_MASK;               /* 恢复记录里的档位 */
+    cur_act = (unsigned char)((pk >> 4) & 0x0F);
+
+    motor_set(cur_act, gear);
+    play_t0 = ms10_get();                   /* 本条的起始时刻 */
+}
+
+/* 回放的安全检查（优先级最高）。
+ * 返回 1 表示有危险，调用方要停车并结束回放。
+ * 和手动、寻光的避障不同：这里只判断要不要结束，绝不改路径、不绕行。
+ * 车头红外每趟都查，它量程小，兜最后一道；
+ * 超声波隔一段时间测一次，测太密会把上一次的余振当成回波，误报。 */
+static bit play_safety(void)
+{
+    unsigned int now;
+
+    if (ir_det())
+        return 1;                           /* 车头红外"贴上了" -> 立刻危险 */
+
+    now = ms10_get();
+    if ((unsigned int)(now - samp) < PSF_GAP)
+        return 0;                           /* 还没到 60ms -> 这次不测（留给红外兜底）*/
+    samp = now;
+
+    if (us_read() < US_STOP)                /* < 5cm -> 太近 */
+        return 1;
+    return 0;
+}
+
+/* 退出回放：停车 -> 回手动 -> 恢复进入前的档位 -> 避障重新武装 -> 刷显示 */
+static void play_exit(void)
+{
+    rec_halt();
+    mode = MODE_MANUAL;
+    gear = play_gear0;
+    avst = AV_FREE;
+    lastcmd = LASTCMD_NONE;                 /* 允许同一个键再按一次 */
+    playidx = 0;
+    show_state();
+}
+
+/* 回放被安全终止：停车 + 标记 + 两声短响 + 退出
+ * 这里不绕行、不续播 —— 就是设计要的"安全复现"。 */
+static void play_abort(void)
+{
+    playerr = 1;
+    rec_halt();
+    beep(BEEP_KEY);                         /* 两声短响（与"正常播完"区分）*/
+    d_20ms();
+    beep(BEEP_KEY);
+    play_exit();
+}
+
+/* 进入回放 */
+static void play_enter(void)
+{
+    if (recn == 0) {                        /* 空记录 -> 拒绝（闪 'E' + 两声，不进回放）*/
+        rec_err();
+        return;
+    }
+
+    play_gear0 = gear;                      /* 记下进入前的档位（退出时恢复）*/
+    /* 进回放要显式放行：回放不走避障判断，但驱动电机的地方会看避障状态，
+     * 如果它停在转向避让上，回放的每个动作都会被改成原地右转。 */
+    avst = AV_FREE;
+    playidx = 0;
+    cur_act = ACT_STOP;
+    mode = MODE_PLAY;
+    lastcmd = LASTCMD_NONE;
+    play_load();                            /* 装载第 0 条 */
+    show_mode();                            /* 显示 'P' */
+    beep(BEEP_TICKS);
+}
+
+/* 回放一步（主循环最前面的独立分支调用）
+ *   ① 安全（最高优先）：危险 -> 立刻停车 + 终止（不等待本条播完）
+ *   ② 遥控（非阻塞）：停止键 / 任意方向键 / 回放键 -> 人工终止
+ *   ③ 计时：本条到点 -> 下一条；索引到头 -> 正常播完 */
+static void play_step(void)
+{
+    unsigned int elapsed;
+
+    if (play_safety()) {
+        play_abort();                       /* 危险 -> 停车终止（不绕行）*/
+        return;
+    }
+
+    ir_recv_nb();
+    if (irstat == 0) {
+        if (ir_ib2 == KEY_PLAY) {           /* 再按回放键 = 退出 */
+            play_exit();
+            return;
+        }
+        /* 停止键和任意方向键都算人工结束回放。
+         * 这里只退出并停车，不顺便执行按下的那个方向。 */
+        if (key2act(ir_ib2) != ACT_NONE) {
+            play_exit();
+            return;
+        }
+    }
+
+    /* ---- 本条到点了吗 ---- */
+    elapsed = (unsigned int)(ms10_get() - play_t0);
+    if (elapsed < play_dur)
+        return;
+
+    playidx++;
+    if (playidx >= recn) {                  /* 先判后读，绝不越界 */
+        play_exit();                        /* 播完 -> 正常结束 */
+        return;
+    }
+    play_load();
+}
+
+/* 回放键（数字键 8）
+ *   录制中按 -> 先封存录制，再进回放；已在回放中按 -> 退出回放 */
+static void play_key(void)
+{
+    if (recon)
+        rec_exit();
+    else if (mode == MODE_PLAY) {
+        play_exit();
+        return;
+    }
+    play_enter();
+}
+
+/*=========================================================================
+ * 四十、手动模式的一步（收红外 -> 处理键 -> 松键判定）
+ * =========================================================================*/
+static void manual_step(void)
+{
+    ir_recv();
+
+    if (irstat == 0) {                      /* 完整帧 */
+        stamp_now();
+        lastcmd = ir_ib2;                   /* 记下来（诊断用；已不参与去重）*/
+        do_key();
+    } else if (irstat == 3) {               /* 重复帧：只刷新"还按着"的时刻 */
+        stamp_now();
+    } else if (irstat == 2) {               /* 见到边沿但没解成 NEC */
+        ir_errpr();
+#if DIAG_IR
+        diag_errshow();                     /* 诊断版：两声短响 + 轮播 lo/hi/cmd/~cmd */
+#endif
+    }
+    /* irstat == 1（静默）什么都不做 */
+
+#if DIAG_IR
+    /* 诊断版：把解出来的键值显示在数码管上（不靠串口，因为打印会吃掉红外帧）。 */
+    if (irstat == 0)
+        diag_keyshow();
+#endif
+
+    if (HOLD_MODE)
+        ir_holdchk();
+}
+
+/*=========================================================================
+ * 四十一、非手动模式的一步
+ *   模式动作已经跑完，这里只收听遥控，且只认三种键：
+ *     停止键（急停回手动）、数字键 1/2/3（直选模式）、加/减档。
+ * =========================================================================*/
+static void auto_step(void)
+{
+    unsigned char tgt;
+
+    ir_recv();
+    if (irstat != 0)
+        return;                             /* 不是完整帧 -> 不管 */
+
+    if (ir_ib2 == KEY_STOP) {               /* 停止最高优先：急停 -> 回手动 */
+        mode = MODE_MANUAL;
+        cur_act = ACT_STOP;
+        motor_set(ACT_STOP, 0);
+        lastcmd = LASTCMD_NONE;
+        show_state();
+        beep(BEEP_TICKS);
+        return;
+    }
+
+    tgt = key2mode(ir_ib2);                 /* 数字键 1/2/3 直接选模式（可直接按 1 退回手动）*/
+    if (tgt != 0xFF) {
+        if (tgt != mode)
+            mode_goto(tgt);
+        return;
+    }
+
+    /* 遥控数字键 5 在这里也生效：非手动模式下同样能开关超声波避障。 */
+    if (ir_ib2 == KEY_AVOID) {
+        avoid_toggle();
+        return;
+    }
+
+    if (ir_ib2 == KEY_SPD_UP) {
+        if (gear < MAXGEAR) {
+            gear++;
+            ml_apply();
+        }
+    } else if (ir_ib2 == KEY_SPD_DN) {
+        if (gear > 0) {
+            gear--;
+            ml_apply();
+        }
+    }
+}
+
+/*=========================================================================
+ * 四十二、变档后的统一收尾（板载按键和遥控加减档共用）
+ *   手动模式：档位直接驱动电机（档位非 0 = 前进）；
+ *   非手动模式：档位交给模式动作去用，这里只刷新模式代号显示。
+ * =========================================================================*/
+static void ml_apply(void)
+{
+    beepwhy('G');                           /* 诊断：板载按键加减档 */
+    beep(BEEP_TICKS);                       /* 变档提示音 */
+
+    if (mode != MODE_MANUAL) {
+        show_mode();
+        prt_gear();
+        return;
+    }
+
+    if (gear == 0 || cur_act == ACT_STOP) {
+        apply_gear();                       /* 档位 0 或没有遥控动作 -> "档位即前进" */
+    } else {
+        motor_set(cur_act, gear);           /* 遥控动作正在跑 -> 只换速度，不改方向 */
+        show_state();
+    }
+    prt_gear();
+}
+
+/*=========================================================================
+ * 四十三、诊断显示（DIAG_IR 打开时才编入）
+ *   收到完整帧：数码管轮流显示键值的高半字节和低半字节。
+ *   帧被拒：响两声，然后轮流显示引导码低电平、引导码高电平、命令和
+ *   命令取反，每个值显示一会儿。
+ *   这些都是为了不看串口也能查问题，拔电复位就恢复正常显示。
+ *=========================================================================*/
+#if DIAG_IR
+#define DIAGSW_TICKS  6000                  /* 诊断显示每 600ms 换一格（6000 × 99.83us）*/
+
+static void diag_keyshow(void)
+{
+    diag_cmd = ir_ib2;
+    diag_on = 1;
+    diag_seq = 0;
+}
+
+static void diag_errshow(void)
+{
+    beep(BEEP_KEY);
+    d_20ms();
+    d_20ms();
+    d_20ms();
+    d_20ms();
+    beep(BEEP_KEY);
+    diag_on = 2;
+    diag_seq = 0;
+}
+
+static void diag_dly(void)
+{
+    unsigned char i;
+    for (i = 0; i < 8; i++)
+        d_20ms();
+}
+
+static unsigned char diag_getval(void)
+{
+    if (diag_on != 2)
+        return diag_cmd;
+    switch (diag_seq & 0x06) {
+    case 0:  return ir_ledlo;
+    case 2:  return ir_ledhi;
+    case 4:  return ir_ib2;
+    default: return ir_ib3;
+    }
+}
+
+static void diag_update(void)
+{
+    unsigned char v;
+
+    /* 每 600ms（6000 tick × 99.83us）推进一格显示：
+     *   键值模式（diag_on=1）：只用到 diag_seq 的 bit0 -> 高半字节 / 低半字节交替；
+     *   被拒模式（diag_on=2）：用 bit1..2 -> 引导码低 / 引导码高 / 命令 / 命令取反 轮播。 */
+    if (diag_on == 0) {
+        diag_t0 = tick_get();               /* 还没东西可显示：随时准备从头计时 */
+        return;
+    }
+    if ((unsigned int)(tick_get() - diag_t0) >= DIAGSW_TICKS) {
+        diag_t0 = tick_get();
+        diag_seq = (unsigned char)((diag_seq + 1) & 0x07);
+    }
+
+    v = diag_getval();
+    if (diag_seq & 0x01)
+        v &= 0x0F;                          /* 低半字节 */
+    else
+        v = (v >> 4) & 0x0F;                /* 高半字节 */
+    P2 = d3_mix(hex_seg[v]);
+}
+#endif
+
+/*=========================================================================
+ * 四十四、初始化
+ *   要注意：内部 RAM 上电是随机值，凡是要读的变量都得显式清零。
+ *   以前漏清过模式和避障开关，结果一开机就不在手动模式；漏清记录条数，
+ *   回放还会去读记录区里的垃圾数据。
+ *   这些都要在开中断之前做完，不然中断已经在改计数了。
+ *=========================================================================*/
+static void init_all(void)
+{
+    /* ---- 上电先停车 + 静音（此刻中断还没开，直接写 P0 是安全的）---- */
+    pwm_div  = 0;
+    pwm_cnt  = 0;
+    buz_left = 0;
+    buz_quiet = 1;
+    dirbits  = DIR_STOP;
+    duty_a   = 0;
+    duty_b   = 0;
+    gear     = 0;
+    klast    = 0;
+    cur_act  = ACT_STOP;
+    back_on  = 0;                           /* A：倒车限时状态 */
+    back_t0  = 0;
+    prox_t   = 0;                           /* 近距提示音计时 */
+    prox_moving = 0;
+    prox_hold = 0;                          /* 上电时不在宽限内，免得一上电就响 */
+    prox_stop_t = 0;
+    av_beep_n = 0;                          /* 锁存提醒音已经响了几次 */
+    av_clear_on = 0;                        /* 障碍"退远"计时 */
+    av_clear_t = 0;
+
+    /* ---- 时基与红外 ---- */
+    tick_l = 0;
+    tick_h = 0;
+    irstat = 1;
+    lastcmd = LASTCMD_NONE;
+    lastt = 0;
+    last_err = 0;
+    ir_ledlo = 0;
+    ir_ledhi = 0;
+
+    /* ---- 模式与避障 ---- */
+    mode = MODE_MANUAL;
+    us_avoid_on = 1;                        /* 超声波避障上电默认开启（长按 S4 / 按 5 可关）*/
+    avst = AV_FREE;                         /* 开机先放行，主循环第一趟就会刷新 */
+    av_beep_t = 0;
+    last_line = 0;
+
+    /* ---- 录制 / 回放 ---- */
+    recon = 0;
+    playerr = 0;
+    recfull = 0;
+    ms_div = 0;
+    ms10_l = 0;
+    ms10_h = 0;
+    pack = 0;
+    cur_dur = 0;
+    samp = 0;
+    recn = 0;
+    playidx = 0;
+    play_dur = 0;
+    play_t0 = 0;
+    play_gear0 = 0;
+
+#if DIAG_IR
+    diag_on = 0;
+    diag_seq = 0;
+    diag_cmd = 0;
+#endif
+
+    /* ---- IO 初始状态 ---- */
+    P0 = 0xC0;                              /* ENA/ENB 拉低 + 蜂鸣器静音 + P0.7 = 1 */
+    P1 = 0xFF;
+    P2 = d3_mix(DISP_0);                    /* 数码管 "0"（D3 由 d3_mix 给，避障开着时是亮的）*/
+    P3 = 0xFF;
+
+    /* ---- 超声波状态机（必须放在 P1 配好之后：us_init 会把触发脚拉低）---- */
+    us_init();
+
+    /* ---- 车头红外的极性：上电自动校准 ----
+     * 把上电那一刻 P3.7 的电平当作“前面没有东西”的基准，之后和基准相反
+     * 就算检测到。这样不管模块是哪种极性都对。
+     * 前提是上电时车头 1~2cm 内不要有东西。 */
+    if (IR_AVOID)
+        ir_inv = 0;                         /* 上电读到高 -> 高 = 无反射 -> 检测到 = 低 */
+    else
+        ir_inv = 1;                         /* 上电读到低 -> 低 = 无反射 -> 检测到 = 高 */
+
+    /* ---- 串口 9600 8N1（T1 方式2）+ T0 方式2 做 100us 时基 ---- */
+    TMOD = 0x22;                            /* 高半字节 T1 方式2，低半字节 T0 方式2 */
+    TH1  = 0xFD;                            /* 11059200/(384*3) = 9600 */
+    TL1  = 0xFD;
+    SCON = 0x50;                            /* 方式1，允许接收 */
+    PCON = 0x00;                            /* SMOD = 0 */
+    TR1  = 1;
+
+    TH0  = T0_RELOAD;
+    TL0  = T0_RELOAD;
+    ET0  = 1;
+    EA   = 1;
+    TR0  = 1;
+
+    lastt = tick_get();                     /* 让松键超时从"现在"开始算 */
+    prox_stop_t = tick_get();               /* 上电当作"刚停下"（2s 后静音）*/
+    prt_boot();
+    apply_gear();                           /* 档位 0 = 停车 + 显示 "0" */
+
+#if DIAG_IR
+    /* 上电响 3 声 + 显示 "8"：证明程序在跑 */
+    P2 = d3_mix(DISP_8);
+    beep(BEEP_TICKS); diag_dly();
+    beep(BEEP_TICKS); diag_dly();
+    beep(BEEP_TICKS); diag_dly();
+    show_state();
+#endif
+}
+
+/*=========================================================================
+ * 四十五、主程序
+ *   主循环一趟的顺序是有讲究的：
+ *     ① 回放分支：必须放在避障前面，两者的要求正好相反；
+ *     ② 避障判断：先测一次，只更新状态，真正的刹停和改写由驱动出口做；
+ *     ③ 录制采样：放在避障之后、模式分派之前，这样录到的是避障处理过
+ *        之后的现场，而且任何模式下只要在录制都会被采样；
+ *     ④ 模式分派：手动模式收遥控，寻光和循迹跑各自的动作；
+ *     ⑤ 板上按键：两种情况下都要扫。
+ *=========================================================================*/
+#if AV_SCOPE
+/*-------------------------------------------------------------------------
+ * 超声波自测版（把 AV_SCOPE 打开，会生成 us_scope.hex）
+ *   只做一件事：反复运行本文件里的 us_read()，把结果显示在数码管上，
+ *   车全程不动，也不响应任何输入。
+ *   数码管读法：显示一横表示读不到回波或者已经够远；显示 0~9 表示这次
+ *   量到的 tick 数，数字越大距离越远。
+ *   手放在 10~15cm 时，应该显示 6~9 之间的数字。
+ *-------------------------------------------------------------------------*/
+static const unsigned char code scope_seg[10] = {
+    0x03, 0x9F, 0x25, 0x0D, 0x99, 0x49, 0x41, 0x1F, 0x01, 0x09   /* 0..9 */
+};
+#define SCOPE_E     0x61            /* "E" = 等不到回波上升沿（模块没响应触发）*/
+#define SCOPE_H     0x91            /* "H" = 回波来了，但宽度 >= 12 tick（够远）*/
+#define SCOPE_DASH  0xFD            /* 只亮 g = 中间一横 "-"（bit0 = D3 = 1 灭）*/
+
+void main(void)
+{
+    unsigned char d;
+
+    /* ---- 只初始化这个自测要用的东西 ---- */
+    dirbits = DIR_STOP;             /* 全程停车 */
+    duty_a  = 0;
+    duty_b  = 0;
+    buz_quiet = 1;                  /* 静音 */
+    P0 = 0xC0;
+    P1 = 0xFF;
+    P2 = 0xFF;
+    P3 = 0xFF;
+
+    tick_l = 0;
+    tick_h = 0;
+    us_init();                      /* 超声波状态机初始化（非阻塞）*/
+
+    TMOD = 0x22;                    /* T1 方式2（串口）+ T0 方式2（100us 时基）*/
+    TH1  = 0xFD;
+    TL1  = 0xFD;
+    SCON = 0x50;
+    PCON = 0x00;
+    TR1  = 1;
+    TH0  = T0_RELOAD;
+    TL0  = T0_RELOAD;
+    ET0  = 1;
+    EA   = 1;
+    TR0  = 1;
+
+    prt_boot();
+
+    while (1) {
+        d = us_read();              /* 就是本文件里的那一份，非阻塞：
+                                     * 取上次结果、必要时发个触发就立刻返回 */
+
+        /* 三种情况分开显示，一眼能看出卡在哪一步：读不到回波、够远、正常量到。 */
+        if (us_stage == 0)
+            P2 = SCOPE_E;           /* E：等不到回波上升沿（模块没响应触发）*/
+        else if (us_stage == 1)
+            P2 = SCOPE_H;           /* H：回波来了但太远（>=12 tick ≈ 21cm）*/
+        else
+            P2 = scope_seg[d > 9 ? 9 : d];   /* 0~9 = 固件内部 tick 数 */
+
+        d_20ms();                   /* 20ms 一轮，刷新更及时；测距间隔由 us_read 内部保证 */
+    }
+}
+#else
+void main(void)
+{
+    unsigned char k;
+
+    init_all();
+
+    while (1) {
+#if DIAG_IR
+        diag_update();
+#endif
+        /* ---- ① 回放中：走独立分支，不碰闸门也不碰按键扫描 ---- */
+        if (mode == MODE_PLAY) {
+            play_step();
+            continue;
+        }
+
+        /* ---- ② 避障闸门 ---- */
+        av_gate();
+
+        /* ---- ③ 录制采样 ---- */
+        if (recon)
+            rec_sample();
+
+        /* ---- ④ 模式分派 ---- */
+        if (mode == MODE_MANUAL) {
+            manual_step();
+        } else {
+            if (mode == MODE_LIGHT)
+                light_step();
+            else if (mode == MODE_TRACK)
+                track_step();
+            auto_step();
+        }
+
+        /* ---- A：倒车限时（只在手动/录制里生效，回放不受影响）---- */
+        back_guard();
+
+        /* ---- 避障关闭时的超声近距提示音（"倒车雷达"）---- */
+        prox_beep();
+
+        /* ---- ⑤ 板载按键（S3 短按加档 / S4 短按减档 / 长按切模式、避障开关）---- */
+        k = key_scan();
+
+        if (k == 3) {                       /* S3 长按 */
+            if (recon) {
+                /* 录制中长按 S3 也不许切模式（遥控 1/2/3 那条已拦截）*/
+                beep(BEEP_KEY);
+                d_20ms();
+                beep(BEEP_KEY);
+            } else {
+                mode_switch();
+            }
+            continue;
+        }
+        if (k == 4) {                       /* S4 长按 -> 避障开关 */
+            avoid_toggle();
+            continue;
+        }
+        if (k == 1) {                       /* S3 短按 -> 加档 */
+            if (gear >= MAXGEAR)
+                continue;                   /* 已经最高档 */
+            gear++;
+            ml_apply();
+        } else if (k == 2) {                /* S4 短按 -> 减档 */
+            if (gear == 0)
+                continue;                   /* 已经 0 档 */
+            gear--;
+            ml_apply();
+        }
+    }
+}
+#endif  /* AV_SCOPE */
