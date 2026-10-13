@@ -1,6 +1,6 @@
 ; main.SRC generated from: main.c
 ; COMPILER INVOKED BY:
-;        D:\keli\C51\BIN\C51.EXE main.c SMALL SRC
+;        D:\keli\C51\BIN\C51.EXE main.c SMALL SRC DEFINE(DIAG_IR=1)
 
 $NOMOD51
 
@@ -101,11 +101,11 @@ PSW	DATA	0D0H
 ?PR?ms10_get?MAIN    SEGMENT CODE 
 ?PR?d_20ms?MAIN      SEGMENT CODE 
 ?PR?_beep?MAIN       SEGMENT CODE 
-?PR?_motor_set?MAIN  SEGMENT CODE 
+?PR?_motor_set_core?MAIN                 SEGMENT CODE 
 ?PR?_d3_mix?MAIN     SEGMENT CODE 
 ?DT?_d3_mix?MAIN     SEGMENT DATA OVERLAYABLE 
 ?PR?avoid_off?MAIN   SEGMENT CODE 
-?PR?apply_gear?MAIN  SEGMENT CODE 
+?PR?apply_gear_core?MAIN                 SEGMENT CODE 
 ?PR?show_state?MAIN  SEGMENT CODE 
 ?PR?show_mode?MAIN   SEGMENT CODE 
 ?PR?key_scan?MAIN    SEGMENT CODE 
@@ -161,6 +161,11 @@ PSW	DATA	0D0H
 ?PR?manual_step?MAIN SEGMENT CODE 
 ?PR?auto_step?MAIN   SEGMENT CODE 
 ?PR?ml_apply?MAIN    SEGMENT CODE 
+?PR?diag_keyshow?MAIN                    SEGMENT CODE 
+?PR?diag_errshow?MAIN                    SEGMENT CODE 
+?PR?diag_dly?MAIN    SEGMENT CODE 
+?PR?diag_getval?MAIN SEGMENT CODE 
+?PR?diag_update?MAIN SEGMENT CODE 
 ?PR?init_all?MAIN    SEGMENT CODE 
 ?PR?main?MAIN        SEGMENT CODE 
 ?DT?main?MAIN        SEGMENT DATA OVERLAYABLE 
@@ -181,7 +186,7 @@ PSW	DATA	0D0H
 
 	RSEG  ?DT?main?MAIN
 ?main?BYTE:
-         k?6080:   DS   1
+         k?6582:   DS   1
 
 	RSEG  ?DT?track_step?MAIN
 ?track_step?BYTE:
@@ -214,6 +219,7 @@ PSW	DATA	0D0H
      av_clear_t:   DS   2
         back_t0:   DS   2
          irstat:   DS   1
+        diag_t0:   DS   2
          prox_t:   DS   2
            pack:   DS   1
            gear:   DS   1
@@ -223,6 +229,7 @@ PSW	DATA	0D0H
            recn:   DS   1
       av_beep_t:   DS   2
           lastt:   DS   2
+       diag_cmd:   DS   1
           us_st:   DS   1
            samp:   DS   2
          ir_ib0:   DS   1
@@ -231,12 +238,13 @@ PSW	DATA	0D0H
          ir_ib3:   DS   1
         play_t0:   DS   2
            avst:   DS   1
-      last_line:   DS   2
+       diag_seq:   DS   1
       us_last_d:   DS   1
        ir_ledhi:   DS   1
     prox_stop_t:   DS   2
        ir_maskb:   DS   1
        ir_ledlo:   DS   1
+        diag_on:   DS   1
        ml_level:   DS   1
       ir_ptridx:   DS   1
        buz_left:   DS   1
@@ -282,10 +290,10 @@ gear_tab:
 	DB	049H
 
 duty_tab:
-	DB	004H
 	DB	008H
-	DB	00CH
-	DB	010H
+	DB	00BH
+	DB	00EH
+	DB	011H
 	DB	014H
 
 arc_tab:
@@ -300,6 +308,24 @@ mode_tab:
 	DB	0E3H
 	DB	0E1H
 	DB	031H
+
+hex_seg:
+	DB	003H
+	DB	09FH
+	DB	025H
+	DB	00DH
+	DB	099H
+	DB	049H
+	DB	041H
+	DB	01FH
+	DB	001H
+	DB	009H
+	DB	011H
+	DB	081H
+	DB	063H
+	DB	085H
+	DB	061H
+	DB	071H
 
 ; /*=========================================================================
 ;  * main.c  --  智能移动机器人 正式固件（C 版，课程设计交作业这份）
@@ -415,7 +441,13 @@ mode_tab:
 ;  *   1 个 tick = 99.83us（Timer0 方式 2，重装值 164：256-164 = 92 机器周期）
 ;  *=========================================================================*/
 ; #define T0_RELOAD    164        /* Timer0 重装值 */
-; #define PWM_DIV      5          /* 每 5 个 tick 走一个 PWM 步 => 500us/步 */
+; #define PWM_DIV      5          /* 每 5 个 tick 走一个 PWM 步 => 500us/步。
+;                                  * 2026-09-22 实测记录：试过把它改成 1（=500Hz，
+;                                  * 与汇编基线一致）--中断平均负载涨 5 倍，主循环
+;                                  * 拿不到 CPU，轮询式红外解码直接崩掉，遥控失灵
+;                                  * （IR rej 刷屏，引导码测成 57/25 而非 5A/2D）。
+;                                  * 已回退。若"低档单轮"确与 100Hz 有关，必须换一
+;                                  * 种不牺牲主循环 CPU 的解法。 */
 ; #define PWM_STEPS    20         /* 20 步 = 10ms = 100Hz；占空比 5% 一档 */
 ; #define BUZ_DIV      5          /* 蜂鸣器每 5 个 tick 翻一次 = 1kHz */
 ; #define MAXGEAR      5          /* 档位 0（停）.. 5（100%） */
@@ -429,7 +461,7 @@ mode_tab:
 ;  *      想接着倒就松开再按一次后退键；
 ;  *   ③ 倒车时超声波避障不参与，不然倒着倒着它自己原地转起来。
 ;  * ---------------------------------------------------------------- */
-; #define BACK_GEAR_MAX  2        /* 倒车最高档：2/5 ≈ 40% 占空比 */
+; #define BACK_GEAR_MAX  2        /* 倒车最高档：2/5 = 55% 占空比 */
 ; #define BACK_TMO_TICKS 30000    /* 连续倒车最长 3.0s（30000 × 99.83us ≈ 2.995s）*/
 ; 
 ; #define BEEP_TICKS   40         /* 提示音：40 个半周期 ≈ 20ms */
@@ -440,7 +472,6 @@ mode_tab:
 ; /* 时基超时门限（单位 tick，换成时间见注释） */
 ; #define LP_TMO_TICKS   9984     /* S3/S4 长按门限 39×256 ≈ 1.0s */
 ; #define HOLD_TMO_TICKS 3000     /* 松键停车：11×256+184 = 3000 tick ≈ 300ms */
-; #define TRK_TMO_TICKS  4864     /* 循迹脱线超时 19×256 ≈ 0.5s */
 ; #define ERRTMO_TICKS   2000     /* "帧被拒"诊断打印限流 ≈ 200ms */
 ; #define AVBEEP_TICKS   6912     /* 刹停锁存期间间歇响的间隔 27×256 ≈ 0.69s */
 ; #define AV_DEC_TICKS   2800     /* 避障分级：一次避让决定至少保持 2800 tick ≈ 280ms 才重判 */
@@ -487,7 +518,7 @@ mode_tab:
 ; #define ACT_ARC_R     0x06      /* 弧线右转：两轮都正转，右轮（内轮）慢 */
 ; #define ACT_NONE      0xFF      /* key2act 用：不认识的键 */
 ; 
-; #define GEAR_DEFAULT  3         /* 挂在 0 档时按方向键 -> 自动跳到这一档（60%） */
+; #define GEAR_DEFAULT  3         /* 挂在 0 档时按方向键 -> 自动跳到这一档（70%） */
 ; 
 ; /* P0 低 4 位方向图案（IN1..IN4） */
 ; #define DIR_STOP      0x00
@@ -605,12 +636,14 @@ mode_tab:
 ; };
 ; 
 ; static const unsigned char code duty_tab[5] = {     /* 档位 1..5 -> PWM 档 0..20 */
-;     4, 8, 12, 16, 20                                 /* 20/40/60/80/100% */
+;     8, 11, 14, 17, 20                                /* 40/55/70/85/100%（原 20% 的 1 挡太慢，已去掉，
+;                                                       * 整条速度梯整体上移，顶档仍是 100% = 最高速）*/
 ; };
 ; 
 ; /* 弧线转弯时内轮的占空比（外轮还是按 duty_tab 给）。
 ;  * 内轮和外轮差别越小，转弯半径越大；内轮越小，弯越急。
-;  * 现在取的是外轮的 20%~25%，之前取 40% 时感觉转弯太慢，就调小了。 */
+;  * 现在取的是外轮的 12%~20%（duty_tab 整体上移后比例比原先略小，
+;  * 弧线弯更急一点）；之前取 40% 时感觉转弯太慢，就调小了。 */
 ; static const unsigned char code arc_tab[5] = { 1, 2, 2, 3, 4 };
 ; 
 ; static const unsigned char code mode_tab[4] = {     /* 索引 = 模式号 */
@@ -728,7 +761,6 @@ mode_tab:
 ; 
 ; /*---- 12.5 模式与板载计时 ----*/
 ; static unsigned char mode;                  /* 当前模式 MODE_* */
-; static unsigned int  last_line;             /* 最后一次"探头看到黑线"的时刻 */
 ; 
 ; /*---- 12.6 录制 / 回放 ----*/
 ; static bit recon;                           /* 1 = 正在录制（叠加在手动模式上的标志） */
@@ -765,10 +797,10 @@ mode_tab:
 ; static void          prt_actname(void);
 ; static void          ir_errpr(void);
 ; 
-; static void          motor_set(unsigned char act, unsigned char g);
+; static void          motor_set_core(unsigned char act, unsigned char g);
 ; static unsigned char d3_mix(unsigned char seg);
 ; static bit           avoid_off(void);
-; static void          apply_gear(void);
+; static void          apply_gear_core(void);
 ; static void          show_state(void);
 ; static void          show_mode(void);
 ; 
@@ -850,47 +882,47 @@ timer0_isr:
 	PUSH 	PSW
 	USING	1
 	MOV  	PSW,#08H
-			; SOURCE LINE # 538
+			; SOURCE LINE # 544
 ; {
 ;     unsigned char a;
 ; 
 ;     /* ---- ① 100us 系统时基：红外脉宽测量、各种超时都靠它，必须每次都加 ---- */
 ;     if (++tick_l == 0)
-			; SOURCE LINE # 543
+			; SOURCE LINE # 549
 	INC  	tick_l
 	MOV  	R7,tick_l
 	MOV  	A,R7
 	JNZ  	?C0001
 ;         tick_h++;
-			; SOURCE LINE # 544
+			; SOURCE LINE # 550
 	INC  	tick_h
 ?C0001:
 ; 
 ;     /* ---- ② PWM：每 PWM_DIV 个 tick 走一步 ---- */
 ;     if (++pwm_div >= PWM_DIV) {
-			; SOURCE LINE # 547
+			; SOURCE LINE # 553
 	INC  	pwm_div
 	MOV  	A,pwm_div
 	CLR  	C
 	SUBB 	A,#05H
 	JC   	?C0002
 ;         pwm_div = 0;
-			; SOURCE LINE # 548
+			; SOURCE LINE # 554
 	MOV  	pwm_div,#00H
 ; 
 ;         if (++pwm_cnt >= PWM_STEPS)
-			; SOURCE LINE # 550
+			; SOURCE LINE # 556
 	INC  	pwm_cnt
 	MOV  	A,pwm_cnt
 	SUBB 	A,#014H
 	JC   	?C0003
 ;             pwm_cnt = 0;
-			; SOURCE LINE # 551
+			; SOURCE LINE # 557
 	MOV  	pwm_cnt,#00H
 ?C0003:
 ; 
 ;         ena = (pwm_cnt < duty_a);
-			; SOURCE LINE # 553
+			; SOURCE LINE # 559
 	MOV  	R7,duty_a
 	MOV  	A,pwm_cnt
 	CLR  	C
@@ -902,7 +934,7 @@ timer0_isr:
 ?C0005:
 	MOV  	ena,C
 ;         enb = (pwm_cnt < duty_b);
-			; SOURCE LINE # 554
+			; SOURCE LINE # 560
 	MOV  	R7,duty_b
 	MOV  	A,pwm_cnt
 	CLR  	C
@@ -916,55 +948,55 @@ timer0_isr:
 ; 
 ;         /* ---- ③ 蜂鸣器方波：每个 PWM 步（500us）翻一次 = 1kHz ---- */
 ;         if (buz_left) {
-			; SOURCE LINE # 557
+			; SOURCE LINE # 563
 	MOV  	A,buz_left
 	JZ   	?C0008
 ;             buz_left--;
-			; SOURCE LINE # 558
+			; SOURCE LINE # 564
 	DEC  	buz_left
 ;             buz_quiet = ~buz_quiet;
-			; SOURCE LINE # 559
+			; SOURCE LINE # 565
 	CPL  	buz_quiet
 ;         } else {
-			; SOURCE LINE # 560
+			; SOURCE LINE # 566
 	SJMP 	?C0009
 ?C0008:
 ;             buz_quiet = 1;                  /* 半周期用完 -> 静音 */
-			; SOURCE LINE # 561
+			; SOURCE LINE # 567
 	SETB 	buz_quiet
 ;         }
-			; SOURCE LINE # 562
+			; SOURCE LINE # 568
 ?C0009:
 ; 
 ;         /* ---- ④ 组装 P0（主循环永不写 P0，只改上面这几个变量）---- */
 ;         a = 0x80;                           /* P0.7 恒 1（未使用，且 P0 是开漏口） */
-			; SOURCE LINE # 565
+			; SOURCE LINE # 571
 ;---- Variable 'a?040' assigned to Register 'R7' ----
 	MOV  	R7,#080H
 ;         a |= dirbits;                       /* D0~D3 = IN1~IN4 方向 */
-			; SOURCE LINE # 566
+			; SOURCE LINE # 572
 	MOV  	A,dirbits
 	ORL  	AR7,A
 ;         if (ena) a |= 0x10;                 /* P0.4 = ENA */
-			; SOURCE LINE # 567
+			; SOURCE LINE # 573
 	JNB  	ena,?C0010
 	ORL  	AR7,#010H
 ?C0010:
 ;         if (enb) a |= 0x20;                 /* P0.5 = ENB */
-			; SOURCE LINE # 568
+			; SOURCE LINE # 574
 	JNB  	enb,?C0011
 	ORL  	AR7,#020H
 ?C0011:
 ;         if (buz_quiet) a |= 0x40;           /* P0.6 = 1 -> 静音 */
-			; SOURCE LINE # 569
+			; SOURCE LINE # 575
 	JNB  	buz_quiet,?C0012
 	ORL  	AR7,#040H
 ?C0012:
 ;         P0 = a;
-			; SOURCE LINE # 570
+			; SOURCE LINE # 576
 	MOV  	P0,R7
 ;     }
-			; SOURCE LINE # 571
+			; SOURCE LINE # 577
 ?C0002:
 ; 
 ;     /* ---- ⑤ 10ms 节拍分频：每个 tick 都加 ----
@@ -972,26 +1004,26 @@ timer0_isr:
 ;      * 必须放在中断里：主循环一趟最长会被收红外堵 25.6ms，用它数节拍会有
 ;      * 很大误差，录制回放的时长就不准了。 */
 ;     if (++ms_div >= MS10_DIV) {
-			; SOURCE LINE # 577
+			; SOURCE LINE # 583
 	INC  	ms_div
 	MOV  	A,ms_div
 	CLR  	C
 	SUBB 	A,#064H
 	JC   	?C0013
 ;         ms_div = 0;
-			; SOURCE LINE # 578
+			; SOURCE LINE # 584
 	MOV  	ms_div,#00H
 ;         if (++ms10_l == 0)
-			; SOURCE LINE # 579
+			; SOURCE LINE # 585
 	INC  	ms10_l
 	MOV  	R7,ms10_l
 	MOV  	A,R7
 	JNZ  	?C0013
 ;             ms10_h++;
-			; SOURCE LINE # 580
+			; SOURCE LINE # 586
 	INC  	ms10_h
 ;     }
-			; SOURCE LINE # 581
+			; SOURCE LINE # 587
 ?C0013:
 ; 
 ;     /* ---- ⑥ 超声波回波采样（非阻塞状态机，也放在写 P0 之后）----
@@ -999,35 +1031,35 @@ timer0_isr:
 ;      * 主循环只负责发触发和取结果，一次都不等。
 ;      * 开销很小：空闲时绝大多数 tick 只走一条判断就过去了。 */
 ;     if (us_st != US_ST_IDLE) {
-			; SOURCE LINE # 587
+			; SOURCE LINE # 593
 	MOV  	A,us_st
 	JZ   	?C0026
 ;         if (us_st == US_ST_WAIT) {
-			; SOURCE LINE # 588
+			; SOURCE LINE # 594
 	MOV  	A,us_st
 	CJNE 	A,#01H,?C0016
 ;             if (US_ECHO) {                  /* 上升沿到了：开始数宽度 */
-			; SOURCE LINE # 589
+			; SOURCE LINE # 595
 	JNB  	US_ECHO,?C0017
 ;                 us_wid = 0;
-			; SOURCE LINE # 590
+			; SOURCE LINE # 596
 	MOV  	us_wid,#00H
 ;                 us_st  = US_ST_HIGH;
-			; SOURCE LINE # 591
+			; SOURCE LINE # 597
 	MOV  	us_st,#02H
 ;             } else if (us_wait < US_TOUT_TICKS) {
-			; SOURCE LINE # 592
+			; SOURCE LINE # 598
 	SJMP 	?C0026
 ?C0017:
 	MOV  	A,us_wait
 	CLR  	C
 	SUBB 	A,#0FAH
-	JNC  	?C0374
+	JNC  	?C0389
 ;                 us_wait++;                  /* 还没来，接着等（主循环不受影响）*/
-			; SOURCE LINE # 593
+			; SOURCE LINE # 599
 	INC  	us_wait
 ;             } else {                        /* 超时：模块没响应这次触发 */
-			; SOURCE LINE # 594
+			; SOURCE LINE # 600
 	SJMP 	?C0026
 ?C0016:
 ;                 us_st  = US_ST_IDLE;
@@ -1039,60 +1071,60 @@ timer0_isr:
 ;             }
 ;         } else {                            /* US_ST_HIGH：数回波宽度 */
 ;             if (US_ECHO) {
-			; SOURCE LINE # 603
+			; SOURCE LINE # 609
 	JNB  	US_ECHO,?C0022
 ;                 if (us_wid < US_NEAR) {
-			; SOURCE LINE # 604
+			; SOURCE LINE # 610
 	MOV  	A,us_wid
 	CLR  	C
 	SUBB 	A,#0CH
 	JNC  	?C0023
 ;                     us_wid++;               /* 还没够远，接着数 */
-			; SOURCE LINE # 605
+			; SOURCE LINE # 611
 	INC  	us_wid
 ;                 } else {                    /* 已经够远，不必再等下降沿 */
-			; SOURCE LINE # 606
+			; SOURCE LINE # 612
 	SJMP 	?C0026
 ?C0023:
 ;                     us_st  = US_ST_IDLE;
-			; SOURCE LINE # 607
-?C0374:
+			; SOURCE LINE # 613
+?C0389:
 	MOV  	us_st,#00H
 ;                     us_res = US_FAR;
-			; SOURCE LINE # 608
+			; SOURCE LINE # 614
 	MOV  	us_res,#0FFH
 ;                     us_got = 1;
-			; SOURCE LINE # 609
+			; SOURCE LINE # 615
 	SETB 	us_got
 ; #if AV_SCOPE
 ;                     us_stage = 1;           /* 自测版 H：回波够远 */
 ; #endif
 ;                 }
-			; SOURCE LINE # 613
+			; SOURCE LINE # 619
 ;             } else {                        /* 下降沿：宽度就是距离 */
-			; SOURCE LINE # 614
+			; SOURCE LINE # 620
 	SJMP 	?C0026
 ?C0022:
 ;                 us_st  = US_ST_IDLE;
-			; SOURCE LINE # 615
+			; SOURCE LINE # 621
 	MOV  	us_st,#00H
 ;                 us_res = us_wid;
-			; SOURCE LINE # 616
+			; SOURCE LINE # 622
 	MOV  	us_res,us_wid
 ;                 us_got = 1;
-			; SOURCE LINE # 617
+			; SOURCE LINE # 623
 	SETB 	us_got
 ; #if AV_SCOPE
 ;                 us_stage = 2;               /* 自测版：正常量到了 */
 ; #endif
 ;             }
-			; SOURCE LINE # 621
+			; SOURCE LINE # 627
 ;         }
-			; SOURCE LINE # 622
+			; SOURCE LINE # 628
 ;     }
-			; SOURCE LINE # 623
+			; SOURCE LINE # 629
 ; }
-			; SOURCE LINE # 624
+			; SOURCE LINE # 630
 ?C0026:
 	POP  	PSW
 	POP  	ACC
@@ -1110,15 +1142,15 @@ timer0_isr:
 	RSEG  ?PR?tick_get?MAIN
 tick_get:
 	USING	0
-			; SOURCE LINE # 631
+			; SOURCE LINE # 637
 ; {
-			; SOURCE LINE # 632
+			; SOURCE LINE # 638
 ;     unsigned int t;
 ;     ET0 = 0;
-			; SOURCE LINE # 634
+			; SOURCE LINE # 640
 	CLR  	ET0
 ;     t = ((unsigned int)tick_h << 8) | tick_l;
-			; SOURCE LINE # 635
+			; SOURCE LINE # 641
 	MOV  	R7,tick_h
 	MOV  	A,R7
 	MOV  	R6,A
@@ -1127,12 +1159,12 @@ tick_get:
 	MOV  	R7,A
 ;---- Variable 't?141' assigned to Register 'R6/R7' ----
 ;     ET0 = 1;
-			; SOURCE LINE # 636
+			; SOURCE LINE # 642
 	SETB 	ET0
 ;     return t;
-			; SOURCE LINE # 637
+			; SOURCE LINE # 643
 ; }
-			; SOURCE LINE # 638
+			; SOURCE LINE # 644
 ?C0027:
 	RET  	
 ; END OF tick_get
@@ -1143,15 +1175,15 @@ tick_get:
 	RSEG  ?PR?ms10_get?MAIN
 ms10_get:
 	USING	0
-			; SOURCE LINE # 640
+			; SOURCE LINE # 646
 ; {
-			; SOURCE LINE # 641
+			; SOURCE LINE # 647
 ;     unsigned int t;
 ;     ET0 = 0;
-			; SOURCE LINE # 643
+			; SOURCE LINE # 649
 	CLR  	ET0
 ;     t = ((unsigned int)ms10_h << 8) | ms10_l;
-			; SOURCE LINE # 644
+			; SOURCE LINE # 650
 	MOV  	R7,ms10_h
 	MOV  	A,R7
 	MOV  	R6,A
@@ -1160,12 +1192,12 @@ ms10_get:
 	MOV  	R7,A
 ;---- Variable 't?242' assigned to Register 'R6/R7' ----
 ;     ET0 = 1;
-			; SOURCE LINE # 645
+			; SOURCE LINE # 651
 	SETB 	ET0
 ;     return t;
-			; SOURCE LINE # 646
+			; SOURCE LINE # 652
 ; }
-			; SOURCE LINE # 647
+			; SOURCE LINE # 653
 ?C0028:
 	RET  	
 ; END OF ms10_get
@@ -1180,25 +1212,25 @@ ms10_get:
 ; static void d_20ms(void)
 
 	RSEG  ?PR?d_20ms?MAIN
-L?0405:
+L?0420:
 	USING	0
-L?0406:
+L?0421:
 	MOV  	R7,#018H
 	LCALL	_beep
 d_20ms:
 	USING	0
-			; SOURCE LINE # 655
+			; SOURCE LINE # 661
 ; {
-			; SOURCE LINE # 656
+			; SOURCE LINE # 662
 ;     unsigned int t0 = tick_get();
-			; SOURCE LINE # 657
+			; SOURCE LINE # 663
 	LCALL	tick_get
 ;---- Variable 't0?343' assigned to Register 'R2/R3' ----
 	MOV  	R3,AR7
 	MOV  	R2,AR6
 ?C0029:
 ;     while ((unsigned int)(tick_get() - t0) < D20MS_TICKS)
-			; SOURCE LINE # 658
+			; SOURCE LINE # 664
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1216,7 +1248,7 @@ d_20ms:
 ?C0030:
 ;         ;
 ; }
-			; SOURCE LINE # 660
+			; SOURCE LINE # 666
 ?C0031:
 	RET  	
 ; END OF d_20ms
@@ -1232,45 +1264,45 @@ d_20ms:
 
 	RSEG  ?PR?_beep?MAIN
 _beep:
-			; SOURCE LINE # 668
+			; SOURCE LINE # 674
 ;---- Variable 'half_cycles?444' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 669
+			; SOURCE LINE # 675
 ;     if (half_cycles == 0) {                 /* 关掉鸣叫 */
-			; SOURCE LINE # 670
+			; SOURCE LINE # 676
 	MOV  	A,R7
 	JNZ  	?C0032
 ;         ET0 = 0;
-			; SOURCE LINE # 671
+			; SOURCE LINE # 677
 	CLR  	ET0
 ;         buz_left = 0;
-			; SOURCE LINE # 672
+			; SOURCE LINE # 678
 	MOV  	buz_left,A
 ;         buz_quiet = 1;
-			; SOURCE LINE # 673
+			; SOURCE LINE # 679
 	SETB 	buz_quiet
 ;         ET0 = 1;
-			; SOURCE LINE # 674
+			; SOURCE LINE # 680
 	SETB 	ET0
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 676
+			; SOURCE LINE # 682
 ?C0032:
 ;     ET0 = 0;
-			; SOURCE LINE # 677
+			; SOURCE LINE # 683
 	CLR  	ET0
 ;     buz_left = half_cycles;
-			; SOURCE LINE # 678
+			; SOURCE LINE # 684
 	MOV  	buz_left,R7
 ;     buz_quiet = 0;                          /* 低电平 -> PNP 导通 -> 开始发声 */
-			; SOURCE LINE # 679
+			; SOURCE LINE # 685
 	CLR  	buz_quiet
 ;     ET0 = 1;
-			; SOURCE LINE # 680
+			; SOURCE LINE # 686
 	SETB 	ET0
 ; }
-			; SOURCE LINE # 681
+			; SOURCE LINE # 687
 ?C0033:
 	RET  	
 ; END OF _beep
@@ -1330,7 +1362,7 @@ _beep:
 ;     put_char((char)('0' + gear));
 ;     prt_str("  duty=");
 ;     {
-;         unsigned char t = gear ? duty_tab[gear - 1] : 0;      /* 0 / 4 / 8 / 12 / 16 / 20 */
+;         unsigned char t = gear ? duty_tab[gear - 1] : 0;      /* 0 / 8 / 11 / 14 / 17 / 20 */
 ;         unsigned char pct = (unsigned char)(t + t + t + t + t);  /* 乘 5 用加法代替，免得又引出库乘法 */
 ;         if (pct >= 100) {
 ;             put_char('1');
@@ -1395,151 +1427,151 @@ _beep:
 ;  *   只在这一个地方判断就行 —— 这也是有障碍时遥控照样能用
 ;  *   （响铃、换显示、记录制）的原因，只是车最后那一步真出不去。
 ;  *=========================================================================*/
-; static void motor_set(unsigned char act, unsigned char g)
+; static void motor_set_core(unsigned char act, unsigned char g)
 
-	RSEG  ?PR?_motor_set?MAIN
-L?0407:
+	RSEG  ?PR?_motor_set_core?MAIN
+L?0422:
 	USING	0
 	MOV  	avst,#02H
-L?0408:
+L?0423:
 	CLR  	A
-L?0409:
+L?0424:
 	MOV  	cur_act,A
 	MOV  	R5,A
 	MOV  	R7,A
-_motor_set:
+_motor_set_core:
 	USING	0
-			; SOURCE LINE # 802
+			; SOURCE LINE # 808
 ;---- Variable 'g?546' assigned to Register 'R5' ----
 ;---- Variable 'act?545' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 803
+			; SOURCE LINE # 809
 ;     if (g == 0) {                           /* 速度 0 -> 停（本来就没让动，闸门不用管）*/
-			; SOURCE LINE # 804
+			; SOURCE LINE # 810
 	MOV  	A,R5
 	JNZ  	?C0034
 ;         dirbits = DIR_STOP;
-			; SOURCE LINE # 805
+			; SOURCE LINE # 811
 ;         duty_a = 0;
-			; SOURCE LINE # 806
+			; SOURCE LINE # 812
 ;         duty_b = 0;
-			; SOURCE LINE # 807
-	SJMP 	?C0376
+			; SOURCE LINE # 813
+	SJMP 	?C0391
 ;         return;
 ;     }
-			; SOURCE LINE # 809
+			; SOURCE LINE # 815
 ?C0034:
 ; 
 ;     /* ---- 避障闸门：按状态决定要不要改写动作 ---- */
 ; #if AV_L1
 ;     if (avst == AV_ARC) {
-			; SOURCE LINE # 813
+			; SOURCE LINE # 819
 	MOV  	A,avst
 	CJNE 	A,#04H,?C0036
 ;         act = ACT_ARC_R;                    /* 中区：弧线右绕，车继续走、不丢前进分量 */
-			; SOURCE LINE # 814
+			; SOURCE LINE # 820
 	MOV  	R7,#06H
 ;     } else
-			; SOURCE LINE # 815
+			; SOURCE LINE # 821
 	SJMP 	?C0037
 ?C0036:
 ; #endif
 ;     if (avst == AV_TURN) {
-			; SOURCE LINE # 817
+			; SOURCE LINE # 823
 	MOV  	A,avst
 	CJNE 	A,#01H,?C0038
 ;         act = ACT_RIGHT;                    /* 近区：一律改写成原地右转绕开 */
-			; SOURCE LINE # 818
+			; SOURCE LINE # 824
 	MOV  	R7,#04H
 ;     } else if (avst == AV_HOLD) {           /* 太近：强制刹停（锁存，等遥控决定）*/
-			; SOURCE LINE # 819
+			; SOURCE LINE # 825
 	SJMP 	?C0037
 ?C0038:
 	MOV  	A,avst
 	CJNE 	A,#02H,?C0037
 ;         cur_act = ACT_STOP;                 /* 真的停车了，当前动作也要清掉，
-			; SOURCE LINE # 820
+			; SOURCE LINE # 826
 	CLR  	A
 	MOV  	cur_act,A
 ;                                              * 否则寻光和循迹每趟都会把动作码设回来，
 ;                                              * 车虽然不动，指示灯却还亮着 */
 ;         dirbits = DIR_STOP;
-			; SOURCE LINE # 823
-?C0375:
+			; SOURCE LINE # 829
+?C0390:
 ;         duty_a = 0;
-			; SOURCE LINE # 824
+			; SOURCE LINE # 830
 ;         duty_b = 0;
-			; SOURCE LINE # 825
-	SJMP 	?C0376
+			; SOURCE LINE # 831
+	SJMP 	?C0391
 ;         return;
 ;     }
-			; SOURCE LINE # 827
+			; SOURCE LINE # 833
 ?C0037:
 ;     /* AV_FREE / AV_HUMAN -> 放行，按原动作走 */
 ; 
 ;     /* ---- 倒车限速（放在闸门之后，按最终动作判断）----
 ;      * 数码管显示的还是用户设的档位，这里只把实际出力封顶。 */
 ;     if (act == ACT_BACK && g > BACK_GEAR_MAX)
-			; SOURCE LINE # 832
+			; SOURCE LINE # 838
 	CJNE 	R7,#02H,?C0041
 	MOV  	A,R5
 	SETB 	C
 	SUBB 	A,#02H
 	JC   	?C0041
 ;         g = BACK_GEAR_MAX;
-			; SOURCE LINE # 833
+			; SOURCE LINE # 839
 	MOV  	R5,#02H
 ?C0041:
 ; 
-;     duty_a = duty_tab[g - 1];               /* 1..5 -> 20/40/60/80/100% */
-			; SOURCE LINE # 835
+;     duty_a = duty_tab[g - 1];               /* 1..5 -> 40/55/70/85/100% */
+			; SOURCE LINE # 841
 	MOV  	A,R5
 	MOV  	DPTR,#duty_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
 ;     duty_b = duty_a;                        /* 默认两轮同速 */
-			; SOURCE LINE # 836
+			; SOURCE LINE # 842
 	MOV  	duty_b,duty_a
 ; 
 ;     /* ---- 弧线转弯：两个轮子都正转，只把内轮的占空比调小 ----
 ;      * 左轮的占空比是 duty_a，右轮是 duty_b；
 ;      * 方向位用前进，而不是原地转的那两个方向。 */
 ;     if (act == ACT_ARC_L) {
-			; SOURCE LINE # 841
+			; SOURCE LINE # 847
 	CJNE 	R7,#05H,?C0042
 ;         duty_a = arc_tab[g - 1];            /* 左弧线：内轮 = 左轮 */
-			; SOURCE LINE # 842
+			; SOURCE LINE # 848
 	MOV  	A,R5
 	MOV  	DPTR,#arc_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
 ;         dirbits = DIR_FWD;
-			; SOURCE LINE # 843
-	SJMP 	?C0378
+			; SOURCE LINE # 849
+	SJMP 	?C0393
 ;         return;
 ;     }
-			; SOURCE LINE # 845
+			; SOURCE LINE # 851
 ?C0042:
 ;     if (act == ACT_ARC_R) {
-			; SOURCE LINE # 846
+			; SOURCE LINE # 852
 	CJNE 	R7,#06H,?C0043
 ;         duty_b = arc_tab[g - 1];            /* 右弧线：内轮 = 右轮 */
-			; SOURCE LINE # 847
+			; SOURCE LINE # 853
 	MOV  	A,R5
 	MOV  	DPTR,#arc_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_b,A
 ;         dirbits = DIR_FWD;
-			; SOURCE LINE # 848
-?C0377:
-	SJMP 	?C0378
+			; SOURCE LINE # 854
+?C0392:
+	SJMP 	?C0393
 ;         return;
 ;     }
-			; SOURCE LINE # 850
+			; SOURCE LINE # 856
 ?C0043:
 ; 
 ;     switch (act) {
-			; SOURCE LINE # 852
+			; SOURCE LINE # 858
 	MOV  	A,R7
 	ADD  	A,#0FEH
 	JZ   	?C0046
@@ -1550,50 +1582,91 @@ _motor_set:
 	ADD  	A,#03H
 	JNZ  	?C0049
 ;     case ACT_FORWARD: dirbits = DIR_FWD;   break;
-			; SOURCE LINE # 853
+			; SOURCE LINE # 859
 ?C0045:
-?C0378:
+?C0393:
 	MOV  	dirbits,#05H
 	RET  	
 ;     case ACT_BACK:    dirbits = DIR_BACK;  break;
-			; SOURCE LINE # 854
+			; SOURCE LINE # 860
 ?C0046:
 	MOV  	dirbits,#0AH
 	RET  	
 ;     case ACT_LEFT:    dirbits = DIR_LEFT;  break;
-			; SOURCE LINE # 855
+			; SOURCE LINE # 861
 ?C0047:
 	MOV  	dirbits,#06H
 	RET  	
 ;     case ACT_RIGHT:   dirbits = DIR_RIGHT; break;
-			; SOURCE LINE # 856
+			; SOURCE LINE # 862
 ?C0048:
 	MOV  	dirbits,#09H
 	RET  	
 ;     default:                                /* ACT_STOP 及任何意外值都当停车 */
-			; SOURCE LINE # 857
+			; SOURCE LINE # 863
 ?C0049:
 ;         dirbits = DIR_STOP;
-			; SOURCE LINE # 858
+			; SOURCE LINE # 864
 	CLR  	A
-?C0376:
+?C0391:
 	MOV  	dirbits,A
 ;         duty_a = 0;
-			; SOURCE LINE # 859
+			; SOURCE LINE # 865
 	MOV  	duty_a,A
 ;         duty_b = 0;
-			; SOURCE LINE # 860
+			; SOURCE LINE # 866
 	MOV  	duty_b,A
 ;         break;
-			; SOURCE LINE # 861
+			; SOURCE LINE # 867
 ;     }
-			; SOURCE LINE # 862
+			; SOURCE LINE # 868
 ; }
-			; SOURCE LINE # 863
+			; SOURCE LINE # 869
 ?C0035:
 	RET  	
-; END OF _motor_set
+; END OF _motor_set_core
 
+; 
+; /*-------------------------------------------------------------------------
+;  * 诊断包装（只在 DEBUG_UART=1 编入）
+;  *   把每次真正下发给电机的指令打出来。下面四个值就是定时器中断组装 P0
+;  *   所用的全部输入，再带上 cur_act 看"当前动作码"有没有被改写过：
+;  *     act = 当前动作码   dir = 方向位 IN1..IN4（P0 低 4 位）
+;  *     A   = 左轮 ENA 占空比                B = 右轮 ENB 占空比
+;  *   判读：A 和 B 相等 = 两轮同速；只有一个非 0、或其中一个明显偏小
+;  *   （唯一能产生这种情况的正常路径是弧线 arc_tab）就是"单轮"。
+;  *   只在"值有变化"时才打：避障决策保持期间每趟主循环都会调 motor_set，
+;  *   不做变化过滤会直接刷屏，而打印本身是阻塞的，会反过来拖慢主循环。
+;  *   普通版这一整块不存在，退化成下面那个宏。
+;  *-------------------------------------------------------------------------*/
+; #if DEBUG_UART
+; static unsigned char ms_p_act, ms_p_dir, ms_p_a, ms_p_b;
+; static bit           ms_p_seen;
+; 
+; static void ms_dbg(void)
+; {
+;     if (ms_p_seen && ms_p_act == cur_act && ms_p_dir == dirbits &&
+;         ms_p_a == duty_a && ms_p_b == duty_b)
+;         return;
+;     ms_p_seen = 1;
+;     ms_p_act  = cur_act;
+;     ms_p_dir  = dirbits;
+;     ms_p_a    = duty_a;
+;     ms_p_b    = duty_b;
+;     prt_str("\r\n! MS act="); prt_hex(cur_act);
+;     prt_str(" dir=");         prt_hex(dirbits);
+;     prt_str(" A=");           prt_hex(duty_a);
+;     prt_str(" B=");           prt_hex(duty_b);
+; }
+; 
+; static void motor_set(unsigned char act, unsigned char g)
+; {
+;     motor_set_core(act, g);
+;     ms_dbg();
+; }
+; #else
+; #define motor_set(act, g)       motor_set_core((act), (g))
+; #endif
 ; 
 ; /* d3_mix —— D3 指示灯的唯一下游
 ;  * D3 现在表示避障开关的状态：亮 = 开着，灭 = 关着。
@@ -1604,27 +1677,27 @@ _motor_set:
 	RSEG  ?PR?_d3_mix?MAIN
 _d3_mix:
 	USING	0
-			; SOURCE LINE # 869
+			; SOURCE LINE # 916
 	MOV  	seg?647,R7
 ; {
-			; SOURCE LINE # 870
+			; SOURCE LINE # 917
 ;     if (avoid_off() == 0)                   /* 录制中避障不参与，D3 也跟着灭 */
-			; SOURCE LINE # 871
+			; SOURCE LINE # 918
 	LCALL	avoid_off
 	MOV  	A,seg?647
 	JC   	?C0050
 ;         return (unsigned char)(seg & 0xFE);     /* D3 位清 0 = 亮 */
-			; SOURCE LINE # 872
+			; SOURCE LINE # 919
 	ANL  	A,#0FEH
 	MOV  	R7,A
 	RET  	
 ?C0050:
 ;     return (unsigned char)(seg | 0x01);         /* D3 位写 1 = 灭 */
-			; SOURCE LINE # 873
+			; SOURCE LINE # 920
 	ORL  	A,#01H
 	MOV  	R7,A
 ; }
-			; SOURCE LINE # 874
+			; SOURCE LINE # 921
 ?C0051:
 	RET  	
 ; END OF _d3_mix
@@ -1639,30 +1712,30 @@ _d3_mix:
 
 	RSEG  ?PR?avoid_off?MAIN
 avoid_off:
-			; SOURCE LINE # 881
+			; SOURCE LINE # 928
 ; {
-			; SOURCE LINE # 882
+			; SOURCE LINE # 929
 ;     if (recon)
-			; SOURCE LINE # 883
+			; SOURCE LINE # 930
 	JNB  	recon,?C0052
 ;         return 1;                           /* 录制中 -> 超声波这一路不参与 */
-			; SOURCE LINE # 884
+			; SOURCE LINE # 931
 	SETB 	C
 	RET  	
 ?C0052:
 ;     if (us_avoid_on)
-			; SOURCE LINE # 885
+			; SOURCE LINE # 932
 	JNB  	us_avoid_on,?C0054
 ;         return 0;
-			; SOURCE LINE # 886
+			; SOURCE LINE # 933
 	CLR  	C
 	RET  	
 ?C0054:
 ;     return 1;                               /* 用户把开关关了 */
-			; SOURCE LINE # 887
+			; SOURCE LINE # 934
 	SETB 	C
 ; }
-			; SOURCE LINE # 888
+			; SOURCE LINE # 935
 ?C0053:
 	RET  	
 ; END OF avoid_off
@@ -1671,78 +1744,78 @@ avoid_off:
 ; /*=========================================================================
 ;  * 二十、apply_gear —— 把当前档位套到电机和数码管上
 ;  *   档位 0   停车，数码管显示 0
-;  *   档位 1~5 前进，占空比 20/40/60/80/100%，数码管显示档位
+;  *   档位 1~5 前进，占空比 40/55/70/85/100%，数码管显示档位
 ;  *   （手动模式下档位不是 0 就前进，这是最早定下来的用法）
 ;  *=========================================================================*/
-; static void apply_gear(void)
+; static void apply_gear_core(void)
 
-	RSEG  ?PR?apply_gear?MAIN
-apply_gear:
+	RSEG  ?PR?apply_gear_core?MAIN
+apply_gear_core:
 	USING	0
-			; SOURCE LINE # 896
+			; SOURCE LINE # 943
 ; {
-			; SOURCE LINE # 897
+			; SOURCE LINE # 944
 ;     if (gear == 0)
-			; SOURCE LINE # 898
+			; SOURCE LINE # 945
 	MOV  	A,gear
-	JZ   	?apply_gear?stop
+	JZ   	?apply_gear_core?stop
 ;         goto stop;
-			; SOURCE LINE # 899
+			; SOURCE LINE # 946
 ?C0055:
 ; 
 ;     /* 刹停锁存期间，本地加档也不许把车开起来 —— 锁存的意思是"决定权在遥控手里" */
 ;     if (avst == AV_HOLD)
-			; SOURCE LINE # 902
+			; SOURCE LINE # 949
 	MOV  	A,avst
 	XRL  	A,#02H
-	JZ   	?apply_gear?stop
+	JZ   	?apply_gear_core?stop
 ;         goto stop;
-			; SOURCE LINE # 903
+			; SOURCE LINE # 950
 ?C0057:
 ; 
 ;     /* 这里必须同时把 cur_act 也设上：避障用 cur_act 判断车本来在不在动，
 ;      * 如果车在走而 cur_act 是 0，避障会以为车停着，就不躲了。 */
 ;     cur_act = ACT_FORWARD;
-			; SOURCE LINE # 907
+			; SOURCE LINE # 954
 	MOV  	cur_act,#01H
 ; 
 ;     duty_a = duty_tab[gear - 1];
-			; SOURCE LINE # 909
+			; SOURCE LINE # 956
 	MOV  	A,gear
 	MOV  	DPTR,#duty_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
 ;     duty_b = duty_a;
-			; SOURCE LINE # 910
+			; SOURCE LINE # 957
 	MOV  	duty_b,duty_a
 ;     dirbits = DIR_FWD;
-			; SOURCE LINE # 911
+			; SOURCE LINE # 958
 	MOV  	dirbits,#05H
 ; 
 ;     P2 = d3_mix(gear_tab[gear]);
-			; SOURCE LINE # 913
-	SJMP 	?C0379
+			; SOURCE LINE # 960
+	SJMP 	?C0394
 ;     return;
 ; 
 ; stop:
-			; SOURCE LINE # 916
-?apply_gear?stop:
+			; SOURCE LINE # 963
+?apply_gear_core?stop:
 ;     cur_act = ACT_STOP;                     /* 真停车了就要清掉，否则 D3 会误亮 */
-			; SOURCE LINE # 917
+			; SOURCE LINE # 964
 	CLR  	A
 	MOV  	cur_act,A
 ;     duty_a = 0;
-			; SOURCE LINE # 918
+			; SOURCE LINE # 965
 	MOV  	duty_a,A
 ;     duty_b = 0;
-			; SOURCE LINE # 919
+			; SOURCE LINE # 966
 	MOV  	duty_b,A
 ;     dirbits = DIR_STOP;
-			; SOURCE LINE # 920
+			; SOURCE LINE # 967
 	MOV  	dirbits,A
 ;     P2 = d3_mix(gear_tab[gear]);
-			; SOURCE LINE # 921
-?C0379:
+			; SOURCE LINE # 968
+?C0394:
 	MOV  	A,gear
 	MOV  	DPTR,#gear_tab
 	MOVC 	A,@A+DPTR
@@ -1750,11 +1823,21 @@ apply_gear:
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ; }
-			; SOURCE LINE # 922
+			; SOURCE LINE # 969
 ?C0058:
 	RET  	
-; END OF apply_gear
+; END OF apply_gear_core
 
+; 
+; #if DEBUG_UART
+; static void apply_gear(void)
+; {
+;     apply_gear_core();
+;     ms_dbg();
+; }
+; #else
+; #define apply_gear()            apply_gear_core()
+; #endif
 ; 
 ; /*=========================================================================
 ;  * 二十一、显示
@@ -1764,17 +1847,17 @@ apply_gear:
 ; static void show_state(void)
 
 	RSEG  ?PR?show_state?MAIN
-L?0410:
+L?0427:
 	USING	0
 	MOV  	R7,cur_act
-	LCALL	_motor_set
+	LCALL	_motor_set_core
 show_state:
 	USING	0
-			; SOURCE LINE # 929
+			; SOURCE LINE # 986
 ; {
-			; SOURCE LINE # 930
+			; SOURCE LINE # 987
 ;     P2 = d3_mix(recon ? DISP_R : gear_tab[gear]);
-			; SOURCE LINE # 931
+			; SOURCE LINE # 988
 	JNB  	recon,?C0059
 	MOV  	R7,#0F5H
 	SJMP 	?C0060
@@ -1787,7 +1870,7 @@ show_state:
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ; }
-			; SOURCE LINE # 932
+			; SOURCE LINE # 989
 	RET  	
 ; END OF show_state
 
@@ -1798,23 +1881,23 @@ show_state:
 	RSEG  ?PR?show_mode?MAIN
 show_mode:
 	USING	0
-			; SOURCE LINE # 935
+			; SOURCE LINE # 992
 ; {
-			; SOURCE LINE # 936
+			; SOURCE LINE # 993
 ;     if (mode == MODE_MANUAL) {
-			; SOURCE LINE # 937
+			; SOURCE LINE # 994
 	MOV  	A,mode
 	JNZ  	?C0062
 ;         show_state();
-			; SOURCE LINE # 938
+			; SOURCE LINE # 995
 	LJMP 	show_state
 ;         return;
 ;     }
-			; SOURCE LINE # 940
+			; SOURCE LINE # 997
 ?C0062:
 ; 
 ;     P2 = d3_mix(mode_tab[mode]);
-			; SOURCE LINE # 942
+			; SOURCE LINE # 999
 	MOV  	A,mode
 	MOV  	DPTR,#mode_tab
 	MOVC 	A,@A+DPTR
@@ -1822,7 +1905,7 @@ show_mode:
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ; }
-			; SOURCE LINE # 943
+			; SOURCE LINE # 1000
 ?C0063:
 	RET  	
 ; END OF show_mode
@@ -1840,70 +1923,70 @@ show_mode:
 	RSEG  ?PR?key_scan?MAIN
 key_scan:
 	USING	0
-			; SOURCE LINE # 952
+			; SOURCE LINE # 1009
 ;---- Variable 't0?1148' assigned to Register 'DPTR' ----
 ; {
-			; SOURCE LINE # 953
+			; SOURCE LINE # 1010
 ;     unsigned int t0;
 ; 
 ;     if (klast) {                            /* 上一次还按着 -> 先等松手 */
-			; SOURCE LINE # 956
+			; SOURCE LINE # 1013
 	MOV  	A,klast
 	JZ   	?C0064
 ;         if (klast == 2 || klast == 4) {
-			; SOURCE LINE # 957
+			; SOURCE LINE # 1014
 	XRL  	A,#02H
 	JZ   	?C0066
 	MOV  	A,klast
 	CJNE 	A,#04H,?C0065
 ?C0066:
 ;             if (KEY_S4) klast = 0;
-			; SOURCE LINE # 958
+			; SOURCE LINE # 1015
 	JNB  	KEY_S4,?C0068
 ;         } else {
-			; SOURCE LINE # 959
-	SJMP 	?C0380
+			; SOURCE LINE # 1016
+	SJMP 	?C0395
 ?C0065:
 ;             if (KEY_S3) klast = 0;
-			; SOURCE LINE # 960
+			; SOURCE LINE # 1017
 	JNB  	KEY_S3,?C0068
-?C0380:
+?C0395:
 	CLR  	A
 	MOV  	klast,A
 ;         }
-			; SOURCE LINE # 961
+			; SOURCE LINE # 1018
 ?C0068:
 ;         return 0;
-			; SOURCE LINE # 962
+			; SOURCE LINE # 1019
 	MOV  	R7,#00H
 	RET  	
 ;     }
-			; SOURCE LINE # 963
+			; SOURCE LINE # 1020
 ?C0064:
 ; 
 ;     if (!KEY_S3) {
-			; SOURCE LINE # 965
+			; SOURCE LINE # 1022
 	JB   	KEY_S3,?C0071
 ;         d_20ms();
-			; SOURCE LINE # 966
+			; SOURCE LINE # 1023
 	LCALL	d_20ms
 ;         if (KEY_S3) return 0;               /* 20ms 后已经松开 -> 抖动，不算 */
-			; SOURCE LINE # 967
+			; SOURCE LINE # 1024
 	JNB  	KEY_S3,?C0072
 	MOV  	R7,#00H
 	RET  	
 ?C0072:
 ;         t0 = tick_get();
-			; SOURCE LINE # 968
+			; SOURCE LINE # 1025
 	LCALL	tick_get
 	MOV  	DPH,R6
 	MOV  	DPL,R7
 ?C0073:
 ;         while (!KEY_S3) {                   /* 一直按住 -> 计时判长按 */
-			; SOURCE LINE # 969
+			; SOURCE LINE # 1026
 	JB   	KEY_S3,?C0074
 ;             if ((unsigned int)(tick_get() - t0) >= LP_TMO_TICKS) {
-			; SOURCE LINE # 970
+			; SOURCE LINE # 1027
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1914,51 +1997,51 @@ key_scan:
 	SUBB 	A,#027H
 	JC   	?C0073
 ;                 klast = 3;
-			; SOURCE LINE # 971
+			; SOURCE LINE # 1028
 	MOV  	klast,#03H
 ;                 return 3;
-			; SOURCE LINE # 972
+			; SOURCE LINE # 1029
 	MOV  	R7,#03H
 	RET  	
 ;             }
-			; SOURCE LINE # 973
+			; SOURCE LINE # 1030
 ;         }
-			; SOURCE LINE # 974
+			; SOURCE LINE # 1031
 ?C0074:
 ;         klast = 1;
-			; SOURCE LINE # 975
+			; SOURCE LINE # 1032
 	MOV  	klast,#01H
 ;         return 1;                           /* 短按 = 加档 */
-			; SOURCE LINE # 976
+			; SOURCE LINE # 1033
 	MOV  	R7,#01H
 	RET  	
 ;     }
-			; SOURCE LINE # 977
+			; SOURCE LINE # 1034
 ?C0071:
 ; 
 ;     if (!KEY_S4) {
-			; SOURCE LINE # 979
+			; SOURCE LINE # 1036
 	JB   	KEY_S4,?C0076
 ;         d_20ms();
-			; SOURCE LINE # 980
+			; SOURCE LINE # 1037
 	LCALL	d_20ms
 ;         if (KEY_S4) return 0;
-			; SOURCE LINE # 981
+			; SOURCE LINE # 1038
 	JNB  	KEY_S4,?C0077
 	MOV  	R7,#00H
 	RET  	
 ?C0077:
 ;         t0 = tick_get();
-			; SOURCE LINE # 982
+			; SOURCE LINE # 1039
 	LCALL	tick_get
 	MOV  	DPH,R6
 	MOV  	DPL,R7
 ?C0078:
 ;         while (!KEY_S4) {
-			; SOURCE LINE # 983
+			; SOURCE LINE # 1040
 	JB   	KEY_S4,?C0079
 ;             if ((unsigned int)(tick_get() - t0) >= LP_TMO_TICKS) {
-			; SOURCE LINE # 984
+			; SOURCE LINE # 1041
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1969,33 +2052,33 @@ key_scan:
 	SUBB 	A,#027H
 	JC   	?C0078
 ;                 klast = 4;
-			; SOURCE LINE # 985
+			; SOURCE LINE # 1042
 	MOV  	klast,#04H
 ;                 return 4;
-			; SOURCE LINE # 986
+			; SOURCE LINE # 1043
 	MOV  	R7,#04H
 	RET  	
 ;             }
-			; SOURCE LINE # 987
+			; SOURCE LINE # 1044
 ;         }
-			; SOURCE LINE # 988
+			; SOURCE LINE # 1045
 ?C0079:
 ;         klast = 2;
-			; SOURCE LINE # 989
+			; SOURCE LINE # 1046
 	MOV  	klast,#02H
 ;         return 2;                           /* 短按 = 减档 */
-			; SOURCE LINE # 990
+			; SOURCE LINE # 1047
 	MOV  	R7,#02H
 	RET  	
 ;     }
-			; SOURCE LINE # 991
+			; SOURCE LINE # 1048
 ?C0076:
 ; 
 ;     return 0;
-			; SOURCE LINE # 993
+			; SOURCE LINE # 1050
 	MOV  	R7,#00H
 ; }
-			; SOURCE LINE # 994
+			; SOURCE LINE # 1051
 ?C0070:
 	RET  	
 ; END OF key_scan
@@ -2009,35 +2092,35 @@ key_scan:
 
 	RSEG  ?PR?k_isfwd?MAIN
 k_isfwd:
-			; SOURCE LINE # 1000
+			; SOURCE LINE # 1057
 ; {
-			; SOURCE LINE # 1001
+			; SOURCE LINE # 1058
 ;     if (cur_act == ACT_FORWARD) return 1;
-			; SOURCE LINE # 1002
+			; SOURCE LINE # 1059
 	MOV  	A,cur_act
 	CJNE 	A,#01H,?C0081
 	SETB 	C
 	RET  	
 ?C0081:
 ;     if (cur_act == ACT_ARC_L)   return 1;
-			; SOURCE LINE # 1003
+			; SOURCE LINE # 1060
 	MOV  	A,cur_act
 	CJNE 	A,#05H,?C0083
 	SETB 	C
 	RET  	
 ?C0083:
 ;     if (cur_act == ACT_ARC_R)   return 1;
-			; SOURCE LINE # 1004
+			; SOURCE LINE # 1061
 	MOV  	A,cur_act
 	CJNE 	A,#06H,?C0084
 	SETB 	C
 	RET  	
 ?C0084:
 ;     return 0;
-			; SOURCE LINE # 1005
+			; SOURCE LINE # 1062
 	CLR  	C
 ; }
-			; SOURCE LINE # 1006
+			; SOURCE LINE # 1063
 ?C0082:
 	RET  	
 ; END OF k_isfwd
@@ -2048,12 +2131,12 @@ k_isfwd:
 	RSEG  ?PR?_key2act?MAIN
 _key2act:
 	USING	0
-			; SOURCE LINE # 1008
+			; SOURCE LINE # 1065
 ;---- Variable 'v?1349' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 1009
+			; SOURCE LINE # 1066
 ;     switch (v) {
-			; SOURCE LINE # 1010
+			; SOURCE LINE # 1067
 	MOV  	A,R7
 	ADD  	A,#0EBH
 	JZ   	?C0088
@@ -2066,17 +2149,17 @@ _key2act:
 	ADD  	A,#0FEH
 	JNZ  	?C0096
 ;     case KEY_FORWARD: return ACT_FORWARD;
-			; SOURCE LINE # 1011
+			; SOURCE LINE # 1068
 ?C0086:
 	MOV  	R7,#01H
 	RET  	
 ;     case KEY_BACK:    return ACT_BACK;
-			; SOURCE LINE # 1012
+			; SOURCE LINE # 1069
 ?C0088:
 	MOV  	R7,#02H
 	RET  	
 ;     case KEY_LEFT:    return k_isfwd() ? ACT_ARC_L : ACT_LEFT;
-			; SOURCE LINE # 1013
+			; SOURCE LINE # 1070
 ?C0089:
 	LCALL	k_isfwd
 	JNC  	?C0090
@@ -2087,7 +2170,7 @@ _key2act:
 ?C0091:
 	RET  	
 ;     case KEY_RIGHT:   return k_isfwd() ? ACT_ARC_R : ACT_RIGHT;
-			; SOURCE LINE # 1014
+			; SOURCE LINE # 1071
 ?C0092:
 	LCALL	k_isfwd
 	JNC  	?C0093
@@ -2098,18 +2181,18 @@ _key2act:
 ?C0094:
 	RET  	
 ;     case KEY_STOP:    return ACT_STOP;
-			; SOURCE LINE # 1015
+			; SOURCE LINE # 1072
 ?C0095:
 	MOV  	R7,#00H
 	RET  	
 ;     default:          return ACT_NONE;
-			; SOURCE LINE # 1016
+			; SOURCE LINE # 1073
 ?C0096:
 	MOV  	R7,#0FFH
 ;     }
-			; SOURCE LINE # 1017
+			; SOURCE LINE # 1074
 ; }
-			; SOURCE LINE # 1018
+			; SOURCE LINE # 1075
 ?C0087:
 	RET  	
 ; END OF _key2act
@@ -2124,12 +2207,12 @@ _key2act:
 	RSEG  ?PR?_key2mode?MAIN
 _key2mode:
 	USING	0
-			; SOURCE LINE # 1024
+			; SOURCE LINE # 1081
 ;---- Variable 'v?1450' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 1025
+			; SOURCE LINE # 1082
 ;     switch (v) {
-			; SOURCE LINE # 1026
+			; SOURCE LINE # 1083
 	MOV  	A,R7
 	ADD  	A,#0E8H
 	JZ   	?C0100
@@ -2138,28 +2221,28 @@ _key2mode:
 	ADD  	A,#052H
 	JNZ  	?C0102
 ;     case KEY_M1: return MODE_MANUAL;
-			; SOURCE LINE # 1027
+			; SOURCE LINE # 1084
 ?C0098:
 	MOV  	R7,#00H
 	RET  	
 ;     case KEY_M2: return MODE_LIGHT;
-			; SOURCE LINE # 1028
+			; SOURCE LINE # 1085
 ?C0100:
 	MOV  	R7,#01H
 	RET  	
 ;     case KEY_M3: return MODE_TRACK;
-			; SOURCE LINE # 1029
+			; SOURCE LINE # 1086
 ?C0101:
 	MOV  	R7,#02H
 	RET  	
 ;     default:     return 0xFF;
-			; SOURCE LINE # 1030
+			; SOURCE LINE # 1087
 ?C0102:
 	MOV  	R7,#0FFH
 ;     }
-			; SOURCE LINE # 1031
+			; SOURCE LINE # 1088
 ; }
-			; SOURCE LINE # 1032
+			; SOURCE LINE # 1089
 ?C0099:
 	RET  	
 ; END OF _key2mode
@@ -2174,26 +2257,26 @@ _key2mode:
 	RSEG  ?PR?_mode_goto?MAIN
 _mode_goto:
 	USING	0
-			; SOURCE LINE # 1038
+			; SOURCE LINE # 1095
 ;---- Variable 'm?1551' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 1039
+			; SOURCE LINE # 1096
 ;     mode = m;
-			; SOURCE LINE # 1040
+			; SOURCE LINE # 1097
 	MOV  	mode,R7
 ;     lastcmd = LASTCMD_NONE;
-			; SOURCE LINE # 1041
+			; SOURCE LINE # 1098
 	MOV  	lastcmd,#0FFH
 ; 
 ;     if (m == MODE_MANUAL) {
-			; SOURCE LINE # 1043
+			; SOURCE LINE # 1100
 	MOV  	A,R7
 	JNZ  	?C0103
 ;         /* 回到手动模式时不停车、接着走：手动模式本来就是档位不为 0 就前进，
 ;          * 所以按当前档位继续走，档位 0 就还停着。
 ;          * 这里也要把 cur_act 设上，理由和 apply_gear 那里一样。 */
 ;         cur_act = gear ? ACT_FORWARD : ACT_STOP;
-			; SOURCE LINE # 1047
+			; SOURCE LINE # 1104
 	MOV  	A,gear
 	JZ   	?C0104
 	MOV  	R7,#01H
@@ -2203,42 +2286,37 @@ _mode_goto:
 ?C0105:
 	MOV  	cur_act,R7
 ;         motor_set(cur_act, gear);           /* gear = 0 时这个出口就是停车 */
-			; SOURCE LINE # 1048
+			; SOURCE LINE # 1105
 	MOV  	R5,gear
-	LCALL	_motor_set
+	LCALL	_motor_set_core
 ;         show_state();
-			; SOURCE LINE # 1049
+			; SOURCE LINE # 1106
 	LCALL	show_state
 ;     } else {
-			; SOURCE LINE # 1050
+			; SOURCE LINE # 1107
 	SJMP 	?C0106
 ?C0103:
 ;         cur_act = ACT_STOP;                 /* 进自主模式：先清掉遥控动作，交给模式动作接管 */
-			; SOURCE LINE # 1051
+			; SOURCE LINE # 1108
 	CLR  	A
 	MOV  	cur_act,A
 ;         if (gear == 0)
-			; SOURCE LINE # 1052
+			; SOURCE LINE # 1109
 	MOV  	A,gear
 	JNZ  	?C0107
 ;             gear = GEAR_DEFAULT;            /* 0 档进自主模式车不会动，补一个默认档 */
-			; SOURCE LINE # 1053
+			; SOURCE LINE # 1110
 	MOV  	gear,#03H
 ?C0107:
-;         last_line = tick_get();             /* 刷新"最后看到线"的时刻（循迹脱线超时的基准）*/
-			; SOURCE LINE # 1054
-	LCALL	tick_get
-	MOV  	last_line,R6
-	MOV  	last_line+01H,R7
 ;         show_mode();
-			; SOURCE LINE # 1055
+			; SOURCE LINE # 1111
 	LCALL	show_mode
 ;     }
-			; SOURCE LINE # 1056
+			; SOURCE LINE # 1112
 ?C0106:
 ; 
 ;     beep(BEEP_TICKS);                       /* 切模式提示音 */
-			; SOURCE LINE # 1058
+			; SOURCE LINE # 1114
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF _mode_goto
@@ -2250,47 +2328,47 @@ _mode_goto:
 	RSEG  ?PR?mode_switch?MAIN
 mode_switch:
 	USING	0
-			; SOURCE LINE # 1061
+			; SOURCE LINE # 1117
 ; {
-			; SOURCE LINE # 1062
+			; SOURCE LINE # 1118
 ;     unsigned char m = mode;
-			; SOURCE LINE # 1063
+			; SOURCE LINE # 1119
 	MOV  	m?1652,mode
 ; 
 ;     if (m == MODE_PLAY) {                   /* 回放中长按 S3 -> 直接回手动 */
-			; SOURCE LINE # 1065
+			; SOURCE LINE # 1121
 	MOV  	A,m?1652
 	CJNE 	A,#03H,?C0109
 ;         mode_goto(MODE_MANUAL);
-			; SOURCE LINE # 1066
+			; SOURCE LINE # 1122
 	CLR  	A
 	MOV  	R7,A
-	SJMP 	?C0381
+	SJMP 	?C0396
 ;         return;
 ;     }
-			; SOURCE LINE # 1068
+			; SOURCE LINE # 1124
 ?C0109:
 ;     m++;
-			; SOURCE LINE # 1069
+			; SOURCE LINE # 1125
 	INC  	m?1652
 ;     if (m >= NMODES)
-			; SOURCE LINE # 1070
+			; SOURCE LINE # 1126
 	MOV  	A,m?1652
 	CLR  	C
 	SUBB 	A,#03H
 	JC   	?C0111
 ;         m = 0;                              /* 绕回手动 */
-			; SOURCE LINE # 1071
+			; SOURCE LINE # 1127
 	CLR  	A
 	MOV  	m?1652,A
 ?C0111:
 ;     mode_goto(m);
-			; SOURCE LINE # 1072
+			; SOURCE LINE # 1128
 	MOV  	R7,m?1652
-?C0381:
+?C0396:
 	LCALL	_mode_goto
 ; }
-			; SOURCE LINE # 1073
+			; SOURCE LINE # 1129
 ?C0110:
 	RET  	
 ; END OF mode_switch
@@ -2306,25 +2384,25 @@ mode_switch:
 	RSEG  ?PR?light_step?MAIN
 light_step:
 	USING	0
-			; SOURCE LINE # 1080
+			; SOURCE LINE # 1136
 ; {
-			; SOURCE LINE # 1081
+			; SOURCE LINE # 1137
 ;     unsigned char act;
 ; 
 ;     if (gear == 0) {
-			; SOURCE LINE # 1084
+			; SOURCE LINE # 1140
 	MOV  	A,gear
 	JNZ  	?C0112
 ;         act = ACT_STOP;
-			; SOURCE LINE # 1085
+			; SOURCE LINE # 1141
 	MOV  	act?1753,A
 ;     } else if (!LDR_LEFT) {
-			; SOURCE LINE # 1086
+			; SOURCE LINE # 1142
 	SJMP 	?C0113
 ?C0112:
 	JB   	LDR_LEFT,?C0114
 ;         act = LDR_RIGHT ? ACT_LEFT : ACT_FORWARD;   /* 只有左边亮 -> 左转 */
-			; SOURCE LINE # 1087
+			; SOURCE LINE # 1143
 	JNB  	LDR_RIGHT,?C0115
 	MOV  	R7,#03H
 	SJMP 	?C0116
@@ -2333,11 +2411,11 @@ light_step:
 ?C0116:
 	MOV  	act?1753,R7
 ;     } else {
-			; SOURCE LINE # 1088
+			; SOURCE LINE # 1144
 	SJMP 	?C0113
 ?C0114:
 ;         act = LDR_RIGHT ? ACT_STOP : ACT_RIGHT;     /* 只有右边亮 -> 右转 */
-			; SOURCE LINE # 1089
+			; SOURCE LINE # 1145
 	JNB  	LDR_RIGHT,?C0118
 	MOV  	R7,#00H
 	SJMP 	?C0119
@@ -2346,19 +2424,19 @@ light_step:
 ?C0119:
 	MOV  	act?1753,R7
 ;     }
-			; SOURCE LINE # 1090
+			; SOURCE LINE # 1146
 ?C0113:
 ; 
 ;     cur_act = act;                          /* 记下当前动作，显示靠它点 D3 */
-			; SOURCE LINE # 1092
+			; SOURCE LINE # 1148
 	MOV  	cur_act,act?1753
 ;     motor_set(act, gear);
-			; SOURCE LINE # 1093
+			; SOURCE LINE # 1149
 	MOV  	R5,gear
 	MOV  	R7,act?1753
-	LCALL	_motor_set
+	LCALL	_motor_set_core
 ;     show_mode();                            /* 每趟刷新（模式代号 + D3 动/停）*/
-			; SOURCE LINE # 1094
+			; SOURCE LINE # 1150
 	LJMP 	show_mode
 ; END OF light_step
 
@@ -2369,93 +2447,72 @@ light_step:
 ;  *   两个探头都压线：骑在线上，直走；
 ;  *   只有左探头压线：线在车的左下方，说明车偏到线的右边了，往左修；
 ;  *   只有右探头压线：反过来，往右修；
-;  *   两个都没压线：脱线了，先直走找线，超过约 0.5 秒就停车。
+;  *   两个都没压线：脱线了，**一直直走找线，不停车**。
+;  *
+;  *   ★ 2026-09-22 按 `D:\工程实践\巡线ok (2)\巡线ok`（同一块板子、已上机可行）
+;  *     的 `line.c : Line_Task()` 对齐，三条判据与它逐条一致：
+;  *       · 压线的一侧 -> 朝那一侧修（参考里 `LINE_BLACK 0` 只是名字写反了，
+;  *         本板实测是"压黑线 = 高"（docs\上机验证记录.md），净行为相同）；
+;  *       · 两个都压线（骑在线上）-> 直走；
+;  *       · 两个都没压线 -> 直走找线。★ 原来这里是"脱线 0.5 s 停车"，
+;  *         参考工程全程不会自己停车 —— 这是两边唯一的实质差别，已按参考去掉。
+;  *     修正动作也一致：本工程的 DIR_LEFT=0x06 / DIR_RIGHT=0x09 与参考的
+;  *     `M_LeftLarge` / `M_RightLarge` 的 IN 图案**完全相同**（两轮反向、原地转）。
 ;  *=========================================================================*/
 ; static void track_step(void)
 
 	RSEG  ?PR?track_step?MAIN
 track_step:
 	USING	0
-			; SOURCE LINE # 1104
+			; SOURCE LINE # 1170
 ; {
-			; SOURCE LINE # 1105
+			; SOURCE LINE # 1171
 ;     unsigned char a = 0;
-			; SOURCE LINE # 1106
-;---- Variable 'a?1854' assigned to Register 'R4' ----
+			; SOURCE LINE # 1172
+;---- Variable 'a?1854' assigned to Register 'R7' ----
 	CLR  	A
-	MOV  	R4,A
+	MOV  	R7,A
 ;     unsigned char act;
 ; 
-;     if (TRACK_L) a |= 0x02;                 /* bit1 = 左探头 */
-			; SOURCE LINE # 1109
+;     if (TRACK_L) a |= 0x02;                 /* bit1 = 左探头压线 */
+			; SOURCE LINE # 1175
 	JNB  	TRACK_L,?C0121
-	MOV  	R4,#02H
+	MOV  	R7,#02H
 ?C0121:
-;     if (TRACK_R) a |= 0x01;                 /* bit0 = 右探头 */
-			; SOURCE LINE # 1110
+;     if (TRACK_R) a |= 0x01;                 /* bit0 = 右探头压线 */
+			; SOURCE LINE # 1176
 	JNB  	TRACK_R,?C0122
-	ORL  	AR4,#01H
+	ORL  	AR7,#01H
 ?C0122:
 ; 
-;     if (a == 0) {                           /* 脱线 */
-			; SOURCE LINE # 1112
-	MOV  	A,R4
-	JNZ  	?C0123
-;         if ((unsigned int)(tick_get() - last_line) >= TRK_TMO_TICKS)
-			; SOURCE LINE # 1113
-	LCALL	tick_get
-	CLR  	C
-	MOV  	A,R7
-	SUBB 	A,last_line+01H
-	MOV  	A,R6
-	SUBB 	A,last_line
-	CLR  	C
-	SUBB 	A,#013H
-	JC   	?C0382
-;             act = ACT_STOP;                 /* 脱线超时 -> 停车 */
-			; SOURCE LINE # 1114
-	CLR  	A
-	MOV  	act?1855,A
-	SJMP 	?C0126
-?C0123:
-;         else
-;             act = ACT_FORWARD;              /* 刚脱线 -> 先直走找回来 */
-;     } else {
-;         last_line = tick_get();             /* 至少一路压线 -> 刷新"最后看到线"的时刻 */
-			; SOURCE LINE # 1118
-	LCALL	tick_get
-	MOV  	last_line,R6
-	MOV  	last_line+01H,R7
-;         if (a == 1)      act = ACT_RIGHT;   /* 只有右探头压线 */
-			; SOURCE LINE # 1119
-	CJNE 	R4,#01H,?C0127
+;     if (a == 1)      act = ACT_RIGHT;       /* 只有右探头压线 -> 线在车右下 -> 往右修 */
+			; SOURCE LINE # 1178
+	CJNE 	R7,#01H,?C0123
 	MOV  	act?1855,#04H
-	SJMP 	?C0126
-?C0127:
-;         else if (a == 2) act = ACT_LEFT;    /* 只有左探头压线 */
-			; SOURCE LINE # 1120
-	CJNE 	R4,#02H,?C0129
+	SJMP 	?C0124
+?C0123:
+;     else if (a == 2) act = ACT_LEFT;        /* 只有左探头压线 -> 线在车左下 -> 往左修 */
+			; SOURCE LINE # 1179
+	CJNE 	R7,#02H,?C0125
 	MOV  	act?1855,#03H
-	SJMP 	?C0126
-?C0129:
-;         else             act = ACT_FORWARD; /* 两个都压线 */
-			; SOURCE LINE # 1121
-?C0382:
+	SJMP 	?C0124
+?C0125:
+;     else             act = ACT_FORWARD;     /* 两个都压 = 骑在线上；两个都不压 = 脱线，
+			; SOURCE LINE # 1180
 	MOV  	act?1855,#01H
-;     }
-			; SOURCE LINE # 1122
-?C0126:
+?C0124:
+;                                              * 都是直走（脱线靠继续前进把线找回来）*/
 ; 
 ;     cur_act = act;
-			; SOURCE LINE # 1124
+			; SOURCE LINE # 1183
 	MOV  	cur_act,act?1855
 ;     motor_set(act, gear);
-			; SOURCE LINE # 1125
+			; SOURCE LINE # 1184
 	MOV  	R5,gear
 	MOV  	R7,act?1855
-	LCALL	_motor_set
+	LCALL	_motor_set_core
 ;     show_mode();
-			; SOURCE LINE # 1126
+			; SOURCE LINE # 1185
 	LJMP 	show_mode
 ; END OF track_step
 
@@ -2481,51 +2538,51 @@ track_step:
 
 	RSEG  ?PR?us_init?MAIN
 us_init:
-			; SOURCE LINE # 1145
+			; SOURCE LINE # 1204
 ; {
-			; SOURCE LINE # 1146
+			; SOURCE LINE # 1205
 ;     ET0 = 0;                                /* 别让中断看到"改了一半"的状态 */
-			; SOURCE LINE # 1147
+			; SOURCE LINE # 1206
 	CLR  	ET0
 ;     us_st     = US_ST_IDLE;
-			; SOURCE LINE # 1148
+			; SOURCE LINE # 1207
 	CLR  	A
 	MOV  	us_st,A
 ;     us_wid    = 0;
-			; SOURCE LINE # 1149
+			; SOURCE LINE # 1208
 	MOV  	us_wid,A
 ;     us_wait   = 0;
-			; SOURCE LINE # 1150
+			; SOURCE LINE # 1209
 	MOV  	us_wait,A
 ;     us_got    = 0;
-			; SOURCE LINE # 1151
+			; SOURCE LINE # 1210
 	CLR  	us_got
 ;     us_res    = US_FAR;
-			; SOURCE LINE # 1152
+			; SOURCE LINE # 1211
 	MOV  	us_res,#0FFH
 ;     us_valid  = 0;
-			; SOURCE LINE # 1153
+			; SOURCE LINE # 1212
 	CLR  	us_valid
 ;     us_seen   = 0;
-			; SOURCE LINE # 1154
+			; SOURCE LINE # 1213
 	CLR  	us_seen
 ;     us_last10 = 0;
-			; SOURCE LINE # 1155
+			; SOURCE LINE # 1214
 	MOV  	us_last10,A
 ;     us_last_d = US_FAR;
-			; SOURCE LINE # 1156
+			; SOURCE LINE # 1215
 	MOV  	us_last_d,#0FFH
 ; #if AV_SCOPE
 ;     us_stage  = 0;
 ; #endif
 ;     US_TRIG   = 0;                          /* 触发脚平时保持低 */
-			; SOURCE LINE # 1160
+			; SOURCE LINE # 1219
 	CLR  	US_TRIG
 ;     ET0 = 1;
-			; SOURCE LINE # 1161
+			; SOURCE LINE # 1220
 	SETB 	ET0
 ; }
-			; SOURCE LINE # 1162
+			; SOURCE LINE # 1221
 	RET  	
 ; END OF us_init
 
@@ -2538,14 +2595,14 @@ us_init:
 
 	RSEG  ?PR?us_trigger?MAIN
 us_trigger:
-			; SOURCE LINE # 1168
+			; SOURCE LINE # 1227
 ; {
-			; SOURCE LINE # 1169
+			; SOURCE LINE # 1228
 ;     US_TRIG = 0;
-			; SOURCE LINE # 1170
+			; SOURCE LINE # 1229
 	CLR  	US_TRIG
 ;     _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
-			; SOURCE LINE # 1171
+			; SOURCE LINE # 1230
 	NOP  	
 	NOP  	
 	NOP  	
@@ -2555,10 +2612,10 @@ us_trigger:
 	NOP  	
 	NOP  	
 ;     US_TRIG = 1;
-			; SOURCE LINE # 1172
+			; SOURCE LINE # 1231
 	SETB 	US_TRIG
 ;     _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
-			; SOURCE LINE # 1173
+			; SOURCE LINE # 1232
 	NOP  	
 	NOP  	
 	NOP  	
@@ -2566,7 +2623,7 @@ us_trigger:
 	NOP  	
 	NOP  	
 ;     _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); _nop_();
-			; SOURCE LINE # 1174
+			; SOURCE LINE # 1233
 	NOP  	
 	NOP  	
 	NOP  	
@@ -2574,21 +2631,21 @@ us_trigger:
 	NOP  	
 	NOP  	
 ;     US_TRIG = 0;
-			; SOURCE LINE # 1175
+			; SOURCE LINE # 1234
 	CLR  	US_TRIG
 ; 
 ;     us_wid  = 0;
-			; SOURCE LINE # 1177
+			; SOURCE LINE # 1236
 	CLR  	A
 	MOV  	us_wid,A
 ;     us_wait = 0;
-			; SOURCE LINE # 1178
+			; SOURCE LINE # 1237
 	MOV  	us_wait,A
 ;     us_st   = US_ST_WAIT;                   /* ← 最后写：中断从这里开始接管 */
-			; SOURCE LINE # 1179
+			; SOURCE LINE # 1238
 	MOV  	us_st,#01H
 ; }
-			; SOURCE LINE # 1180
+			; SOURCE LINE # 1239
 	RET  	
 ; END OF us_trigger
 
@@ -2600,11 +2657,11 @@ us_trigger:
 	RSEG  ?PR?us_read?MAIN
 us_read:
 	USING	0
-			; SOURCE LINE # 1184
+			; SOURCE LINE # 1243
 ; {
-			; SOURCE LINE # 1185
+			; SOURCE LINE # 1244
 ;     unsigned char t10 = ms10_l;             /* 10ms 计数（8 位够：60ms 内不会绕回）*/
-			; SOURCE LINE # 1186
+			; SOURCE LINE # 1245
 ;---- Variable 't10?2156' assigned to Register 'R6' ----
 	MOV  	R6,ms10_l
 ; 
@@ -2612,34 +2669,56 @@ us_read:
 ;      * 取结果和清标志一起做（中间关一下中断），免得出现取了值没清标志，
 ;      * 或者清了标志没取值的半截情况。 */
 ;     if (us_got) {
-			; SOURCE LINE # 1191
-	JNB  	us_got,?C0134
+			; SOURCE LINE # 1250
+	JNB  	us_got,?C0130
 ;         ET0 = 0;
-			; SOURCE LINE # 1192
+			; SOURCE LINE # 1251
 	CLR  	ET0
 ;         us_last_d = us_res;
-			; SOURCE LINE # 1193
+			; SOURCE LINE # 1252
 	MOV  	us_last_d,us_res
 ;         us_got    = 0;
-			; SOURCE LINE # 1194
+			; SOURCE LINE # 1253
 	CLR  	us_got
 ;         us_valid  = 1;
-			; SOURCE LINE # 1195
+			; SOURCE LINE # 1254
 	SETB 	us_valid
 ;         ET0 = 1;
-			; SOURCE LINE # 1196
+			; SOURCE LINE # 1255
 	SETB 	ET0
 ;     }
-			; SOURCE LINE # 1197
-?C0134:
+			; SOURCE LINE # 1256
+?C0130:
 ; 
 ;     /* ---- 2) 正在测：先把上次的结果给出去，绝不在这里等 ---- */
 ;     if (us_st != US_ST_IDLE)
-			; SOURCE LINE # 1200
+			; SOURCE LINE # 1259
 	MOV  	A,us_st
-	JZ   	?C0135
+	JZ   	?C0131
 ;         return us_valid ? us_last_d : US_FAR;
-			; SOURCE LINE # 1201
+			; SOURCE LINE # 1260
+	JNB  	us_valid,?C0132
+	MOV  	R7,us_last_d
+	RET  	
+?C0132:
+	MOV  	R7,#0FFH
+?C0133:
+	RET  	
+?C0131:
+; 
+;     /* ---- 3) 两次测距之间要留间隔，间隔不够就沿用上次的结果 ----
+;      * 触发太密模块会不响应，那样每次都白等一回，车看起来就像不动。 */
+;     if (us_seen && (unsigned char)(t10 - us_last10) < US_GAP_MS10)
+			; SOURCE LINE # 1264
+	JNB  	us_seen,?C0135
+	CLR  	C
+	MOV  	A,R6
+	SUBB 	A,us_last10
+	CLR  	C
+	SUBB 	A,#06H
+	JNC  	?C0135
+;         return us_valid ? us_last_d : US_FAR;
+			; SOURCE LINE # 1265
 	JNB  	us_valid,?C0136
 	MOV  	R7,us_last_d
 	RET  	
@@ -2649,49 +2728,27 @@ us_read:
 	RET  	
 ?C0135:
 ; 
-;     /* ---- 3) 两次测距之间要留间隔，间隔不够就沿用上次的结果 ----
-;      * 触发太密模块会不响应，那样每次都白等一回，车看起来就像不动。 */
-;     if (us_seen && (unsigned char)(t10 - us_last10) < US_GAP_MS10)
-			; SOURCE LINE # 1205
-	JNB  	us_seen,?C0139
-	CLR  	C
-	MOV  	A,R6
-	SUBB 	A,us_last10
-	CLR  	C
-	SUBB 	A,#06H
-	JNC  	?C0139
-;         return us_valid ? us_last_d : US_FAR;
-			; SOURCE LINE # 1206
-	JNB  	us_valid,?C0140
-	MOV  	R7,us_last_d
-	RET  	
-?C0140:
-	MOV  	R7,#0FFH
-?C0141:
-	RET  	
-?C0139:
-; 
 ;     /* ---- 4) 空闲且够久：发一次触发，然后立刻返回 ---- */
 ;     us_last10 = t10;
-			; SOURCE LINE # 1209
+			; SOURCE LINE # 1268
 	MOV  	us_last10,R6
 ;     us_seen   = 1;
-			; SOURCE LINE # 1210
+			; SOURCE LINE # 1269
 	SETB 	us_seen
 ;     us_trigger();
-			; SOURCE LINE # 1211
+			; SOURCE LINE # 1270
 	LCALL	us_trigger
 ;     return us_valid ? us_last_d : US_FAR;   /* 本次不给新值，等下一次来取 */
-			; SOURCE LINE # 1212
-	JNB  	us_valid,?C0142
+			; SOURCE LINE # 1271
+	JNB  	us_valid,?C0138
 	MOV  	R7,us_last_d
-	SJMP 	?C0143
-?C0142:
-	MOV  	R7,#0FFH
-?C0143:
-; }
-			; SOURCE LINE # 1213
+	SJMP 	?C0139
 ?C0138:
+	MOV  	R7,#0FFH
+?C0139:
+; }
+			; SOURCE LINE # 1272
+?C0134:
 	RET  	
 ; END OF us_read
 
@@ -2708,38 +2765,38 @@ us_read:
 
 	RSEG  ?PR?ir_det?MAIN
 ir_det:
-			; SOURCE LINE # 1223
+			; SOURCE LINE # 1282
 ; {
-			; SOURCE LINE # 1224
+			; SOURCE LINE # 1283
 ;     if (ir_inv) {                           /* 1 = 高电平表示检测到 */
-			; SOURCE LINE # 1225
+			; SOURCE LINE # 1284
 	MOV  	A,ir_inv
-	JZ   	?C0144
+	JZ   	?C0140
 ;         if (IR_AVOID) return 1;
-			; SOURCE LINE # 1226
-	JNB  	IR_AVOID,?C0145
+			; SOURCE LINE # 1285
+	JNB  	IR_AVOID,?C0141
 	SETB 	C
 	RET  	
-?C0145:
+?C0141:
 ;         return 0;
-			; SOURCE LINE # 1227
+			; SOURCE LINE # 1286
 	CLR  	C
 	RET  	
 ;     }
-			; SOURCE LINE # 1228
-?C0144:
+			; SOURCE LINE # 1287
+?C0140:
 ;     if (IR_AVOID) return 0;                 /* 0 = 低电平表示检测到 */
-			; SOURCE LINE # 1229
-	JNB  	IR_AVOID,?C0147
+			; SOURCE LINE # 1288
+	JNB  	IR_AVOID,?C0143
 	CLR  	C
 	RET  	
-?C0147:
+?C0143:
 ;     return 1;
-			; SOURCE LINE # 1230
+			; SOURCE LINE # 1289
 	SETB 	C
 ; }
-			; SOURCE LINE # 1231
-?C0146:
+			; SOURCE LINE # 1290
+?C0142:
 	RET  	
 ; END OF ir_det
 
@@ -2782,34 +2839,34 @@ ir_det:
 	RSEG  ?PR?ir_brake?MAIN
 ir_brake:
 	USING	0
-			; SOURCE LINE # 1266
+			; SOURCE LINE # 1325
 ; {
-			; SOURCE LINE # 1267
+			; SOURCE LINE # 1326
 ;     if (avst == AV_HUMAN)
-			; SOURCE LINE # 1268
+			; SOURCE LINE # 1327
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0149
-?C0148:
+	JZ   	?C0145
+?C0144:
 ;         return;                             /* 遥控已接管 -> 放行，别再压住*/
 ; 
 ;     avst = AV_HOLD;                         /* 锁存：决定权交回遥控 */
-			; SOURCE LINE # 1271
+			; SOURCE LINE # 1330
 ;     cur_act = ACT_STOP;
-			; SOURCE LINE # 1272
+			; SOURCE LINE # 1331
 ;     motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 1273
-	LCALL	L?0407
+			; SOURCE LINE # 1332
+	LCALL	L?0422
 ;     show_mode();                            /* 这里用 show_mode，循迹时能保住显示的模式代号 */
-			; SOURCE LINE # 1274
+			; SOURCE LINE # 1333
 	LCALL	show_mode
 ;     av_beep_t = tick_get();                 /* 之后由 av_gate 按间隔继续响（若允许）*/
-			; SOURCE LINE # 1275
+			; SOURCE LINE # 1334
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
 ;     av_beep_n = 0;                          /* 本次锁存的已响次数从 0 起算 */
-			; SOURCE LINE # 1276
+			; SOURCE LINE # 1335
 	CLR  	A
 	MOV  	av_beep_n,A
 ; #if !IR_BEEP_SILENT
@@ -2817,8 +2874,8 @@ ir_brake:
 ;     beep(BEEP_KEY);                         /* 静音时不出这一声 */
 ; #endif
 ; }
-			; SOURCE LINE # 1281
-?C0149:
+			; SOURCE LINE # 1340
+?C0145:
 	RET  	
 ; END OF ir_brake
 
@@ -2834,60 +2891,60 @@ ir_brake:
 	RSEG  ?PR?av_gate_hold?MAIN
 av_gate_hold:
 	USING	0
-			; SOURCE LINE # 1289
+			; SOURCE LINE # 1348
 ; {
-			; SOURCE LINE # 1290
+			; SOURCE LINE # 1349
 ;     if (avst == AV_HUMAN)
-			; SOURCE LINE # 1291
+			; SOURCE LINE # 1350
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0151
-?C0150:
+	JZ   	?C0147
+?C0146:
 ;         return;                             /* 遥控已接管，不再反复刹停 */
 ; 
 ;     if (mode == MODE_LIGHT) {
-			; SOURCE LINE # 1294
+			; SOURCE LINE # 1353
 	MOV  	A,mode
-	CJNE 	A,#01H,?C0152
+	CJNE 	A,#01H,?C0148
 ;         /* 寻光是自动跑的模式，离得太近时应该把控制权交回给人，而不是原地
 ;          * 锁死等人来按。所以这里不锁存、也不间歇响。 */
 ;         mode = MODE_MANUAL;
-			; SOURCE LINE # 1297
+			; SOURCE LINE # 1356
 	CLR  	A
 	MOV  	mode,A
 ;         avst = AV_HUMAN;
-			; SOURCE LINE # 1298
+			; SOURCE LINE # 1357
 	MOV  	avst,#03H
 ;         cur_act = ACT_STOP;
-			; SOURCE LINE # 1299
+			; SOURCE LINE # 1358
 ;         motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 1300
-	LCALL	L?0409
+			; SOURCE LINE # 1359
+	LCALL	L?0424
 ;         show_mode();
-			; SOURCE LINE # 1301
+			; SOURCE LINE # 1360
 	LCALL	show_mode
 ;         beep(BEEP_KEY);                     /* 寻光：退回手动，响一声*/
-			; SOURCE LINE # 1302
-	SJMP 	?C0383
+			; SOURCE LINE # 1361
+	SJMP 	?C0397
 ;         return;
 ;     }
-			; SOURCE LINE # 1304
-?C0152:
+			; SOURCE LINE # 1363
+?C0148:
 ; 
 ;     /* ---- 手动：刹停 + 锁存 ---- */
 ;     avst = AV_HOLD;
-			; SOURCE LINE # 1307
+			; SOURCE LINE # 1366
 ;     cur_act = ACT_STOP;
-			; SOURCE LINE # 1308
+			; SOURCE LINE # 1367
 ;     motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 1309
-	LCALL	L?0407
+			; SOURCE LINE # 1368
+	LCALL	L?0422
 ;     show_mode();
-			; SOURCE LINE # 1310
+			; SOURCE LINE # 1369
 	LCALL	show_mode
 ; 
 ;     av_beep_t = tick_get();                 /* 之后由 av_gate 按间隔继续响 */
-			; SOURCE LINE # 1312
+			; SOURCE LINE # 1371
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
@@ -2895,23 +2952,23 @@ av_gate_hold:
 ;      * 每次都响的话听起来就是隔一会儿又响一声。
 ;      * 计数只在障碍真的退远以后才清零。 */
 ;     if (av_beep_n == 0) {
-			; SOURCE LINE # 1316
+			; SOURCE LINE # 1375
 	MOV  	A,av_beep_n
-	JNZ  	?C0151
+	JNZ  	?C0147
 ;         av_beep_n = 1;                      /* 这声算第 1 声 */
-			; SOURCE LINE # 1317
+			; SOURCE LINE # 1376
 	MOV  	av_beep_n,#01H
 ;         beepwhy('H');                       /* 诊断：刹停入口那一声 */
 ;         beep(BEEP_KEY);                     /* 响一声：手动 = 刹停锁存 */
-			; SOURCE LINE # 1319
-?C0383:
+			; SOURCE LINE # 1378
+?C0397:
 	MOV  	R7,#018H
 	LCALL	_beep
 ;     }
-			; SOURCE LINE # 1320
+			; SOURCE LINE # 1379
 ; }
-			; SOURCE LINE # 1321
-?C0151:
+			; SOURCE LINE # 1380
+?C0147:
 	RET  	
 ; END OF av_gate_hold
 
@@ -2931,9 +2988,9 @@ av_gate_hold:
 	RSEG  ?PR?av_gate?MAIN
 av_gate:
 	USING	0
-			; SOURCE LINE # 1333
+			; SOURCE LINE # 1392
 ; {
-			; SOURCE LINE # 1334
+			; SOURCE LINE # 1393
 ;     unsigned char d;
 ; 
 ; #if DEBUG_UART
@@ -2963,75 +3020,90 @@ av_gate:
 ;      * 驱动出口会一直把车按住，表现就是一进录制车就走不动。
 ;      * 车头红外不受影响，紧接着那一步还是会刹停。 */
 ;     if (avoid_off() && avst == AV_HOLD)
-			; SOURCE LINE # 1363
+			; SOURCE LINE # 1422
 	LCALL	avoid_off
-	JNC  	?C0154
+	JNC  	?C0150
 	MOV  	A,avst
-	CJNE 	A,#02H,?C0154
+	CJNE 	A,#02H,?C0150
 ;         avst = AV_FREE;
-			; SOURCE LINE # 1364
+			; SOURCE LINE # 1423
 	CLR  	A
 	MOV  	avst,A
-?C0154:
+?C0150:
 ; 
 ;     /* ---- 锁存状态要放在最前面判断 ----
 ;      * 否则每趟都调用一次刹车，会变成连续鸣叫，而不是隔一会儿响一声。
 ;      * 锁存期间这里只管要不要继续响。 */
 ;     if (avst == AV_HOLD) {
-			; SOURCE LINE # 1369
+			; SOURCE LINE # 1428
 	MOV  	A,avst
 	XRL  	A,#02H
-	JNZ  	?C0155
+	JNZ  	?C0151
 ; #if IR_BEEP_SILENT
 ;         if (ir_det())
-			; SOURCE LINE # 1371
+			; SOURCE LINE # 1430
 	LCALL	ir_det
 	JNC  	$ + 5H
-	LJMP 	?C0157
-?C0156:
+	LJMP 	?C0153
+?C0152:
 ;             return;                         /* 红外贴着就静音 */
 ; #endif
 ;         /* ---- 到这里说明车头红外没有贴着 ---- */
 ; 
-;                 /* ① 超声波不参与的情形 -> 没有该响的理由 */
-;         if (avoid_off() || mode == MODE_TRACK)
-			; SOURCE LINE # 1377
+;         /* ---- ★ 循迹模式：前方空了就自动解锁 ----
+;          *   锁存本来是为"手动模式下车停住、等遥控来接管"设计的；而循迹是
+;          *   无人干预的自动模式，没人会来按键。原来循迹走到这里也是直接
+;          *   return，于是**车头红外只要有一瞬间误触发，就把车永久钉死**，
+;          *   表现正是"循迹跑一段就自己停下、数码管还显示 t、怎么都不动"。
+;          *   参考工程（`巡线ok`）在巡线期间**根本不看 P3.7**；这里取其中间
+;          *   路线：贴着就刹（保住车头红外这道保命闸门），一离开就放行。 */
+;         if (mode == MODE_TRACK) {
+			; SOURCE LINE # 1442
+	MOV  	A,mode
+	CJNE 	A,#02H,?C0154
+;             avst = AV_FREE;
+			; SOURCE LINE # 1443
+	SJMP 	?C0398
+;             return;
+;         }
+			; SOURCE LINE # 1445
+?C0154:
+; 
+;         /* ① 超声波不参与的情形 -> 没有该响的理由 */
+;         if (avoid_off())
+			; SOURCE LINE # 1448
 	LCALL	avoid_off
 	JNC  	$ + 5H
-	LJMP 	?C0157
-	MOV  	A,mode
-	XRL  	A,#02H
-	JNZ  	$ + 5H
-	LJMP 	?C0157
-?C0158:
+	LJMP 	?C0153
+?C0155:
 ;             return;
 ; 
 ;         /* ② 障碍退远了：要持续一段时间才算真的让开（防止读数抖动） */
 ;         if (us_read() >= US_CLEAR) {
-			; SOURCE LINE # 1381
+			; SOURCE LINE # 1452
 	LCALL	us_read
 	MOV  	A,R7
 	CLR  	C
 	SUBB 	A,#07H
-	JC   	?C0160
+	JC   	?C0156
 ;             if (!av_clear_on) {             /* 刚开始"退远"计时 */
-			; SOURCE LINE # 1382
-	JB   	av_clear_on,?C0161
+			; SOURCE LINE # 1453
+	JB   	av_clear_on,?C0157
 ;                 av_clear_on = 1;
-			; SOURCE LINE # 1383
+			; SOURCE LINE # 1454
 	SETB 	av_clear_on
 ;                 av_clear_t = tick_get();
-			; SOURCE LINE # 1384
+			; SOURCE LINE # 1455
 	LCALL	tick_get
 	MOV  	av_clear_t,R6
 	MOV  	av_clear_t+01H,R7
 	RET  	
 ;                 return;
 ;             }
-			; SOURCE LINE # 1386
-?C0161:
+			; SOURCE LINE # 1457
+?C0157:
 ;             if ((unsigned int)(tick_get() - av_clear_t) >= AV_CLEAR_TICKS)
-			; SOURCE LINE # 1387
+			; SOURCE LINE # 1458
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -3046,32 +3118,32 @@ av_gate:
 	MOV  	A,R6
 	SUBB 	A,#013H
 	JNC  	$ + 5H
-	LJMP 	?C0157
+	LJMP 	?C0153
 ;                 av_beep_n = 0;              /* 真走了 -> 下次再靠近才会重新提醒 */
-			; SOURCE LINE # 1388
+			; SOURCE LINE # 1459
 	CLR  	A
 	MOV  	av_beep_n,A
 	RET  	
 ;             return;                         /* 退到安全距离 -> 静音 */
 ;         }
-			; SOURCE LINE # 1390
-?C0160:
+			; SOURCE LINE # 1461
+?C0156:
 ;         av_clear_on = 0;                    /* 又近了 -> 撤销"已退远"的计时 */
-			; SOURCE LINE # 1391
+			; SOURCE LINE # 1462
 	CLR  	av_clear_on
 ; 
 ;         /* ③ 提醒音：一次遇到障碍总共响 AVBEEP_N 声（含刹停那一声） */
 ;         if (av_beep_n >= AVBEEP_N)
-			; SOURCE LINE # 1394
+			; SOURCE LINE # 1465
 	MOV  	A,av_beep_n
 	CLR  	C
 	SUBB 	A,#03H
 	JC   	$ + 5H
-	LJMP 	?C0157
-?C0163:
+	LJMP 	?C0153
+?C0159:
 ;             return;                         /* 提醒够了就安静，锁存不变，车还停着等遥控 */
 ;         if ((unsigned int)(tick_get() - av_beep_t) >= AVBEEP_TICKS) {
-			; SOURCE LINE # 1396
+			; SOURCE LINE # 1467
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -3081,125 +3153,126 @@ av_gate:
 	CLR  	C
 	SUBB 	A,#01BH
 	JNC  	$ + 5H
-	LJMP 	?C0157
+	LJMP 	?C0153
 ;             av_beep_t = tick_get();
-			; SOURCE LINE # 1397
+			; SOURCE LINE # 1468
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
 ;             av_beep_n++;                    /* 记数，响够 AVBEEP_N 声就停 */
-			; SOURCE LINE # 1398
+			; SOURCE LINE # 1469
 	INC  	av_beep_n
 ;             beepwhy('L');                   /* 诊断：锁存期间的间歇提醒 */
 ;             beep(BEEP_KEY);
-			; SOURCE LINE # 1400
+			; SOURCE LINE # 1471
 	MOV  	R7,#018H
 	LJMP 	_beep
 ;         }
-			; SOURCE LINE # 1401
+			; SOURCE LINE # 1472
 ;         return;
 ;     /* 只是不响了，车还停着等遥控操作，锁存没有解除 */
 ;     }
-			; SOURCE LINE # 1404
-?C0155:
+			; SOURCE LINE # 1475
+?C0151:
 ; 
 ;     /* ---- ① 车头红外：全局生效，触发就直接刹车 ----
 ;      * 放在这里、而且在循迹早退之前，这样循迹也受它保护。 */
 ;     if (ir_det()) {
-			; SOURCE LINE # 1408
+			; SOURCE LINE # 1479
 	LCALL	ir_det
-	JNC  	?C0165
+	JNC  	?C0161
 ;         ir_brake();
-			; SOURCE LINE # 1409
+			; SOURCE LINE # 1480
 	LJMP 	ir_brake
 ;         return;
 ;     }
-			; SOURCE LINE # 1411
-?C0165:
+			; SOURCE LINE # 1482
+?C0161:
 ; 
 ;     /* ---- ② 循迹模式不参与超声波避障 ----
 ;      * 要显式把状态清掉，否则它会卡在转向避让上，把循迹的每个动作都改成
 ;      * 原地右转，车就一直打转。
 ;      * 循迹并不是没有避障，它还有车头红外刹车这一道。 */
 ;     if (mode == MODE_TRACK) {
-			; SOURCE LINE # 1417
+			; SOURCE LINE # 1488
 	MOV  	A,mode
-	CJNE 	A,#02H,?C0166
+	CJNE 	A,#02H,?C0162
 ;         avst = AV_FREE;
-			; SOURCE LINE # 1418
+			; SOURCE LINE # 1489
+?C0398:
 	CLR  	A
 	MOV  	avst,A
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1420
-?C0166:
+			; SOURCE LINE # 1491
+?C0162:
 ; 
 ;     /* ---- 倒车的时候超声波不参与 ----
 ;      * 超声波朝前，倒车时它的读数没有意义：按近区改写会让车倒着倒着突然
 ;      * 原地打转，按太近刹停又会拦住“倒着离开前方障碍”这种正常动作。
 ;      * 倒车的安全交给限速和限时兜底。车头红外在上面已经处理过，照旧生效。 */
 ;     if (cur_act == ACT_BACK) {
-			; SOURCE LINE # 1426
+			; SOURCE LINE # 1497
 	MOV  	A,cur_act
-	CJNE 	A,#02H,?C0167
+	CJNE 	A,#02H,?C0163
 ;         avst = AV_FREE;
-			; SOURCE LINE # 1427
+			; SOURCE LINE # 1498
 	CLR  	A
 	MOV  	avst,A
 ;         motor_set(ACT_BACK, gear);          /* 把可能残留的"原地右转"改写回来 */
-			; SOURCE LINE # 1428
+			; SOURCE LINE # 1499
 	MOV  	R5,gear
 	MOV  	R7,#02H
-	SJMP 	?C0386
+	SJMP 	?C0401
 ;         return;
 ;     }
-			; SOURCE LINE # 1430
-?C0167:
+			; SOURCE LINE # 1501
+?C0163:
 ; 
 ;     /* ---- ③ 超声波：受手动开关控制（长按 S4 或遥控数字键 5）；
 ;      *      录制中一律不参与 ---- */
 ;     if (avoid_off()) {
-			; SOURCE LINE # 1434
+			; SOURCE LINE # 1505
 	LCALL	avoid_off
-	JNC  	?C0168
+	JNC  	?C0164
 ;         avst = AV_FREE;
-			; SOURCE LINE # 1435
+			; SOURCE LINE # 1506
 	CLR  	A
 	MOV  	avst,A
 ;         if (cur_act != 0) motor_set(cur_act, gear);
-			; SOURCE LINE # 1436
+			; SOURCE LINE # 1507
 	MOV  	A,cur_act
-	JZ   	?C0157
+	JZ   	?C0153
 	MOV  	R5,gear
 	MOV  	R7,A
-?C0384:
-	SJMP 	?C0386
+?C0399:
+	SJMP 	?C0401
 ;         return;
 ;     }
-			; SOURCE LINE # 1438
-?C0168:
+			; SOURCE LINE # 1509
+?C0164:
 ; 
 ;     d = us_read();
-			; SOURCE LINE # 1440
+			; SOURCE LINE # 1511
 	LCALL	us_read
 	MOV  	d?2557,R7
 ; #if DEBUG_UART
 ;     av_dbg_d = d;                           /* 诊断：记下这次实测的距离 */
 ; #endif
 ;     if (d < US_STOP) {                      /* 太近（< 5cm）*/
-			; SOURCE LINE # 1444
+			; SOURCE LINE # 1515
 	MOV  	A,d?2557
 	CLR  	C
 	SUBB 	A,#03H
-	JNC  	?C0170
+	JNC  	?C0166
 ;         av_gate_hold();
-			; SOURCE LINE # 1445
+			; SOURCE LINE # 1516
 	LJMP 	av_gate_hold
 ;         return;
 ;     }
-			; SOURCE LINE # 1447
-?C0170:
+			; SOURCE LINE # 1518
+?C0166:
 ; 
 ; #if AV_L1
 ;     /* 决策保持：刚做过的决定要认账，别拿同一份旧读数每趟主循环都改一次动作。
@@ -3210,13 +3283,13 @@ av_gate:
 ;      *   计时用的是那个共用计时器 av_clear_t（AV_HOLD 那一支不会走到这里）。 */
 ;     if ((avst == AV_ARC || avst == AV_TURN) &&
 ;         (unsigned int)(tick_get() - av_clear_t) < AV_DEC_TICKS) {
-			; SOURCE LINE # 1457
+			; SOURCE LINE # 1528
 	MOV  	A,avst
 	XRL  	A,#04H
-	JZ   	?C0172
+	JZ   	?C0168
 	MOV  	A,avst
-	CJNE 	A,#01H,?C0171
-?C0172:
+	CJNE 	A,#01H,?C0167
+?C0168:
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -3230,57 +3303,57 @@ av_gate:
 	SUBB 	A,#0F0H
 	MOV  	A,R6
 	SUBB 	A,#0AH
-	JNC  	?C0171
+	JNC  	?C0167
 ;         if (cur_act == 0) return;           /* 本来就没在动 -> 别自己窜出去 */
-			; SOURCE LINE # 1458
+			; SOURCE LINE # 1529
 	MOV  	A,cur_act
-	JZ   	?C0157
-?C0173:
+	JZ   	?C0153
+?C0169:
 ;         motor_set(cur_act, gear);           /* 由驱动出口按 avst 改成弧线 / 原地转 */
-			; SOURCE LINE # 1459
+			; SOURCE LINE # 1530
 	MOV  	R5,gear
 	MOV  	R7,cur_act
-?C0385:
-	SJMP 	?C0386
+?C0400:
+	SJMP 	?C0401
 ;         return;
 ;     }
-			; SOURCE LINE # 1461
-?C0171:
+			; SOURCE LINE # 1532
+?C0167:
 ; 
 ;     /* ---- 重新分档：每 AV_DEC_TICKS 才重判一次 ---- */
 ;     av_clear_t = tick_get();                /* 共用计时器：这里当作"上次分档的时刻" */
-			; SOURCE LINE # 1464
+			; SOURCE LINE # 1535
 	LCALL	tick_get
 	MOV  	av_clear_t,R6
 	MOV  	av_clear_t+01H,R7
 ;     if (d < AV_SPIN)
-			; SOURCE LINE # 1465
+			; SOURCE LINE # 1536
 	MOV  	A,d?2557
 	CLR  	C
 	SUBB 	A,#07H
-	JNC  	?C0174
+	JNC  	?C0170
 ;         avst = AV_TURN;                     /* 近区：原地右转避让（急转让开） */
-			; SOURCE LINE # 1466
+			; SOURCE LINE # 1537
 	MOV  	avst,#01H
-	SJMP 	?C0175
-?C0174:
+	SJMP 	?C0171
+?C0170:
 ;     else if (d < US_NEAR)
-			; SOURCE LINE # 1467
+			; SOURCE LINE # 1538
 	MOV  	A,d?2557
 	CLR  	C
 	SUBB 	A,#0CH
-	JNC  	?C0176
+	JNC  	?C0172
 ;         avst = AV_ARC;                      /* 中区：弧线右绕，车不停 */
-			; SOURCE LINE # 1468
+			; SOURCE LINE # 1539
 	MOV  	avst,#04H
-	SJMP 	?C0175
-?C0176:
+	SJMP 	?C0171
+?C0172:
 ;     else
 ;         avst = AV_FREE;                     /* 已经够远：放行 */
-			; SOURCE LINE # 1470
+			; SOURCE LINE # 1541
 	CLR  	A
 	MOV  	avst,A
-?C0175:
+?C0171:
 ; #else
 ;     /* ---- 已经不近了：解除接管状态，避障重新生效 ---- */
 ;     avst = AV_FREE;
@@ -3295,19 +3368,19 @@ av_gate:
 ; 
 ;     /* ---- 距离够远：放行，并把原来的动作重新套上，免得一直右转 ---- */
 ;     if (cur_act == 0) return;
-			; SOURCE LINE # 1484
+			; SOURCE LINE # 1555
 	MOV  	A,cur_act
-	JZ   	?C0157
-?C0178:
+	JZ   	?C0153
+?C0174:
 ;     motor_set(cur_act, gear);
-			; SOURCE LINE # 1485
+			; SOURCE LINE # 1556
 	MOV  	R5,gear
 	MOV  	R7,cur_act
-?C0386:
-	LCALL	_motor_set
+?C0401:
+	LCALL	_motor_set_core
 ; }
-			; SOURCE LINE # 1486
-?C0157:
+			; SOURCE LINE # 1557
+?C0153:
 	RET  	
 ; END OF av_gate
 
@@ -3324,49 +3397,49 @@ av_gate:
 	RSEG  ?PR?avoid_toggle?MAIN
 avoid_toggle:
 	USING	0
-			; SOURCE LINE # 1495
+			; SOURCE LINE # 1566
 ; {
-			; SOURCE LINE # 1496
+			; SOURCE LINE # 1567
 ;     us_avoid_on = !us_avoid_on;
-			; SOURCE LINE # 1497
+			; SOURCE LINE # 1568
 	CPL  	us_avoid_on
 ;     beepwhy('T');                           /* 诊断：避障开关被触发 */
 ; 
 ;     if (us_avoid_on) {
-			; SOURCE LINE # 1500
-	JNB  	us_avoid_on,?C0179
+			; SOURCE LINE # 1571
+	JNB  	us_avoid_on,?C0175
 ;         beep(BEEP_KEY);                     /* 开：两声短响 */
-			; SOURCE LINE # 1501
+			; SOURCE LINE # 1572
 ;         d_20ms();
-			; SOURCE LINE # 1502
-	LCALL	L?0405
+			; SOURCE LINE # 1573
+	LCALL	L?0420
 ;         d_20ms();
-			; SOURCE LINE # 1503
+			; SOURCE LINE # 1574
 	LCALL	d_20ms
 ;         beep(BEEP_KEY);
-			; SOURCE LINE # 1504
+			; SOURCE LINE # 1575
 	MOV  	R7,#018H
 ;     } else {
-			; SOURCE LINE # 1505
-	SJMP 	?C0387
-?C0179:
+			; SOURCE LINE # 1576
+	SJMP 	?C0402
+?C0175:
 ;         avst = AV_FREE;                     /* 关：解开锁存（理由见上面）*/
-			; SOURCE LINE # 1506
+			; SOURCE LINE # 1577
 	CLR  	A
 	MOV  	avst,A
 ;         beep(BEEP_TICKS);                   /*     一声长响 */
-			; SOURCE LINE # 1507
+			; SOURCE LINE # 1578
 	MOV  	R7,#028H
-?C0387:
+?C0402:
 	LCALL	_beep
 ;     }
-			; SOURCE LINE # 1508
-?C0180:
+			; SOURCE LINE # 1579
+?C0176:
 ; 
 ;     /* 立刻刷新一下 D3。车停着的时候没有别的地方写 P2，
 ;      * 不刷的话指示灯会停在旧状态上。 */
 ;     show_mode();
-			; SOURCE LINE # 1512
+			; SOURCE LINE # 1583
 	LJMP 	show_mode
 ; END OF avoid_toggle
 
@@ -3388,30 +3461,30 @@ avoid_toggle:
 	RSEG  ?PR?meas_level?MAIN
 meas_level:
 	USING	0
-			; SOURCE LINE # 1526
+			; SOURCE LINE # 1597
 ; {
-			; SOURCE LINE # 1527
+			; SOURCE LINE # 1598
 ;     unsigned int t0;
 ;     unsigned int d;
 ;     unsigned char hi, lo;
 ; 
 ;     ET0 = 0;                                /* 起始时刻：内联原子读 */
-			; SOURCE LINE # 1532
+			; SOURCE LINE # 1603
 	CLR  	ET0
 ;     hi = tick_h;
-			; SOURCE LINE # 1533
+			; SOURCE LINE # 1604
 ;---- Variable 'hi?2760' assigned to Register 'R5' ----
 	MOV  	R5,tick_h
 ;     lo = tick_l;
-			; SOURCE LINE # 1534
+			; SOURCE LINE # 1605
 ;---- Variable 'lo?2761' assigned to Register 'R4' ----
 	MOV  	R4,tick_l
 ;     ET0 = 1;
-			; SOURCE LINE # 1535
+			; SOURCE LINE # 1606
 	SETB 	ET0
 ;     /* 起始时刻直接赋给 t0 就行，不需要另外占一个全局变量 */
 ;     t0 = ((unsigned int)hi << 8) | lo;
-			; SOURCE LINE # 1537
+			; SOURCE LINE # 1608
 	MOV  	A,R5
 	MOV  	R6,A
 	MOV  	A,R4
@@ -3420,22 +3493,22 @@ meas_level:
 	MOV  	R2,AR6
 ; 
 ;     for (;;) {
-			; SOURCE LINE # 1539
-?C0182:
+			; SOURCE LINE # 1610
+?C0178:
 ;         ET0 = 0;                            /* 当前时刻：内联原子读 */
-			; SOURCE LINE # 1540
+			; SOURCE LINE # 1611
 	CLR  	ET0
 ;         hi = tick_h;
-			; SOURCE LINE # 1541
+			; SOURCE LINE # 1612
 	MOV  	R5,tick_h
 ;         lo = tick_l;
-			; SOURCE LINE # 1542
+			; SOURCE LINE # 1613
 	MOV  	R4,tick_l
 ;         ET0 = 1;
-			; SOURCE LINE # 1543
+			; SOURCE LINE # 1614
 	SETB 	ET0
 ;         d = (unsigned int)((((unsigned int)hi << 8) | lo) - t0);
-			; SOURCE LINE # 1544
+			; SOURCE LINE # 1615
 	MOV  	A,R5
 	MOV  	R6,A
 	MOV  	A,R4
@@ -3450,88 +3523,88 @@ meas_level:
 ;---- Variable 'd?2759' assigned to Register 'R6/R7' ----
 ; 
 ;         if (ml_cap) {                       /* 有明确限时：到点就算超时 */
-			; SOURCE LINE # 1546
+			; SOURCE LINE # 1617
 	MOV  	A,ml_cap
-	JZ   	?C0184
+	JZ   	?C0180
 ;             if (d >= ml_cap) {
-			; SOURCE LINE # 1547
+			; SOURCE LINE # 1618
 	MOV  	DPL,A
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,DPL
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0187
+	JC   	?C0183
 ;                 ml_dur = d;
-			; SOURCE LINE # 1548
+			; SOURCE LINE # 1619
 ;                 return 1;
-			; SOURCE LINE # 1549
-	SJMP 	?C0388
+			; SOURCE LINE # 1620
+	SJMP 	?C0403
 ;             }
-			; SOURCE LINE # 1550
+			; SOURCE LINE # 1621
 ;         } else {                            /* 没有限时：超过 25.6ms 就算超时 */
-			; SOURCE LINE # 1551
-?C0184:
+			; SOURCE LINE # 1622
+?C0180:
 ;             if (d > 255) {
-			; SOURCE LINE # 1552
+			; SOURCE LINE # 1623
 	SETB 	C
 	MOV  	A,R7
 	SUBB 	A,#0FFH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0187
+	JC   	?C0183
 ;                 ml_dur = d;
-			; SOURCE LINE # 1553
-?C0388:
+			; SOURCE LINE # 1624
+?C0403:
 	MOV  	ml_dur,R6
 	MOV  	ml_dur+01H,R7
 ;                 return 1;
-			; SOURCE LINE # 1554
+			; SOURCE LINE # 1625
 	SETB 	C
 	RET  	
 ;             }
-			; SOURCE LINE # 1555
+			; SOURCE LINE # 1626
 ;         }
-			; SOURCE LINE # 1556
-?C0187:
+			; SOURCE LINE # 1627
+?C0183:
 ; 
 ;         if (ml_level) {                     /* 量高 -> 等它变低 */
-			; SOURCE LINE # 1558
+			; SOURCE LINE # 1629
 	MOV  	A,ml_level
-	JZ   	?C0189
+	JZ   	?C0185
 ;             if (!IR_IN) {
-			; SOURCE LINE # 1559
-	JB   	IR_IN,?C0182
+			; SOURCE LINE # 1630
+	JB   	IR_IN,?C0178
 ;                 ml_dur = d;
-			; SOURCE LINE # 1560
+			; SOURCE LINE # 1631
 ;                 return 0;
-			; SOURCE LINE # 1561
-	SJMP 	?C0389
+			; SOURCE LINE # 1632
+	SJMP 	?C0404
 ;             }
-			; SOURCE LINE # 1562
+			; SOURCE LINE # 1633
 ;         } else {                            /* 量低 -> 等它变高 */
-			; SOURCE LINE # 1563
-?C0189:
+			; SOURCE LINE # 1634
+?C0185:
 ;             if (IR_IN) {
-			; SOURCE LINE # 1564
-	JNB  	IR_IN,?C0182
+			; SOURCE LINE # 1635
+	JNB  	IR_IN,?C0178
 ;                 ml_dur = d;
-			; SOURCE LINE # 1565
-?C0389:
+			; SOURCE LINE # 1636
+?C0404:
 	MOV  	ml_dur,R6
 	MOV  	ml_dur+01H,R7
 ;                 return 0;
-			; SOURCE LINE # 1566
+			; SOURCE LINE # 1637
 	CLR  	C
 ;             }
-			; SOURCE LINE # 1567
+			; SOURCE LINE # 1638
 ;         }
-			; SOURCE LINE # 1568
+			; SOURCE LINE # 1639
 ;     }
-			; SOURCE LINE # 1569
+			; SOURCE LINE # 1640
 ; }
-			; SOURCE LINE # 1570
-?C0186:
+			; SOURCE LINE # 1641
+?C0182:
 	RET  	
 ; END OF meas_level
 
@@ -3556,27 +3629,27 @@ meas_level:
 
 	RSEG  ?PR?ir_reset?MAIN
 ir_reset:
-			; SOURCE LINE # 1588
+			; SOURCE LINE # 1659
 ; {
-			; SOURCE LINE # 1589
+			; SOURCE LINE # 1660
 ;     ml_cap = 0;
-			; SOURCE LINE # 1590
+			; SOURCE LINE # 1661
 	CLR  	A
 	MOV  	ml_cap,A
 ;     ir_ledlo = 0;
-			; SOURCE LINE # 1591
+			; SOURCE LINE # 1662
 	MOV  	ir_ledlo,A
 ;     ir_ledhi = 0;
-			; SOURCE LINE # 1592
+			; SOURCE LINE # 1663
 	MOV  	ir_ledhi,A
 ;     ir_short = 0;
-			; SOURCE LINE # 1593
+			; SOURCE LINE # 1664
 	CLR  	ir_short
 ;     irstat = 1;                             /* 先当"连下降沿都没等到" */
-			; SOURCE LINE # 1594
+			; SOURCE LINE # 1665
 	MOV  	irstat,#01H
 ; }
-			; SOURCE LINE # 1595
+			; SOURCE LINE # 1666
 	RET  	
 ; END OF ir_reset
 
@@ -3586,47 +3659,47 @@ ir_reset:
 
 	RSEG  ?PR?_ir_setbit?MAIN
 _ir_setbit:
-			; SOURCE LINE # 1598
+			; SOURCE LINE # 1669
 ;---- Variable 'idx?2962' assigned to Register 'R7' ----
 ; {
-			; SOURCE LINE # 1599
+			; SOURCE LINE # 1670
 ;     switch (idx) {
-			; SOURCE LINE # 1600
+			; SOURCE LINE # 1671
 	MOV  	A,R7
 	DEC  	A
-	JZ   	?C0196
+	JZ   	?C0192
 	DEC  	A
-	JZ   	?C0197
+	JZ   	?C0193
 	ADD  	A,#02H
-	JNZ  	?C0198
+	JNZ  	?C0194
 ;     case 0:  ir_ib0 |= ir_maskb; break;
-			; SOURCE LINE # 1601
-?C0195:
+			; SOURCE LINE # 1672
+?C0191:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib0,A
 	RET  	
 ;     case 1:  ir_ib1 |= ir_maskb; break;
-			; SOURCE LINE # 1602
-?C0196:
+			; SOURCE LINE # 1673
+?C0192:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib1,A
 	RET  	
 ;     case 2:  ir_ib2 |= ir_maskb; break;
-			; SOURCE LINE # 1603
-?C0197:
+			; SOURCE LINE # 1674
+?C0193:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib2,A
 	RET  	
 ;     default: ir_ib3 |= ir_maskb; break;
-			; SOURCE LINE # 1604
-?C0198:
+			; SOURCE LINE # 1675
+?C0194:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib3,A
 ;     }
-			; SOURCE LINE # 1605
+			; SOURCE LINE # 1676
 ; }
-			; SOURCE LINE # 1606
-?C0199:
+			; SOURCE LINE # 1677
+?C0195:
 	RET  	
 ; END OF _ir_setbit
 
@@ -3637,156 +3710,156 @@ _ir_setbit:
 	RSEG  ?PR?ir_decode_bits?MAIN
 ir_decode_bits:
 	USING	0
-			; SOURCE LINE # 1609
+			; SOURCE LINE # 1680
 ; {
-			; SOURCE LINE # 1610
+			; SOURCE LINE # 1681
 ;     ir_ib0 = 0;
-			; SOURCE LINE # 1611
+			; SOURCE LINE # 1682
 	CLR  	A
 	MOV  	ir_ib0,A
 ;     ir_ib1 = 0;
-			; SOURCE LINE # 1612
+			; SOURCE LINE # 1683
 	MOV  	ir_ib1,A
 ;     ir_ib2 = 0;
-			; SOURCE LINE # 1613
+			; SOURCE LINE # 1684
 	MOV  	ir_ib2,A
 ;     ir_ib3 = 0;
-			; SOURCE LINE # 1614
+			; SOURCE LINE # 1685
 	MOV  	ir_ib3,A
 ;     ir_bits = 32;
-			; SOURCE LINE # 1615
+			; SOURCE LINE # 1686
 	MOV  	ir_bits,#020H
 ;     ir_ptridx = 0;
-			; SOURCE LINE # 1616
+			; SOURCE LINE # 1687
 	MOV  	ir_ptridx,A
 ;     ir_maskb = 0x01;
-			; SOURCE LINE # 1617
+			; SOURCE LINE # 1688
 	MOV  	ir_maskb,#01H
-?C0200:
+?C0196:
 ; 
 ;     while (ir_bits) {
-			; SOURCE LINE # 1619
+			; SOURCE LINE # 1690
 ;         /* ---- 每位先一段低电平（约 0.56ms），必须结束 ---- */
 ;         ml_level = 0;
-			; SOURCE LINE # 1621
+			; SOURCE LINE # 1692
 	CLR  	A
 	MOV  	ml_level,A
 ;         ml_cap = 0;
-			; SOURCE LINE # 1622
+			; SOURCE LINE # 1693
 	MOV  	ml_cap,A
 ;         if (meas_level())
-			; SOURCE LINE # 1623
+			; SOURCE LINE # 1694
 	LCALL	meas_level
-	JNC  	?C0202
+	JNC  	?C0198
 ;             return 0;
-			; SOURCE LINE # 1624
+			; SOURCE LINE # 1695
 	CLR  	C
 	RET  	
-?C0202:
+?C0198:
 ; 
 ;         /* ---- 再一段高电平：0.56ms = 位0，1.69ms = 位1 ---- */
 ;         ml_level = 1;
-			; SOURCE LINE # 1627
+			; SOURCE LINE # 1698
 	MOV  	ml_level,#01H
 ;         if (ir_bits == 1) {
-			; SOURCE LINE # 1628
+			; SOURCE LINE # 1699
 	MOV  	A,ir_bits
-	CJNE 	A,#01H,?C0204
+	CJNE 	A,#01H,?C0200
 ;             /* 最后一位后面是空闲高电平，不能等它变低：
 ;              * 只量到 1.2ms 就下结论，到点还高着 = 位1 */
 ;             ml_cap = IR_BITCAP;
-			; SOURCE LINE # 1631
+			; SOURCE LINE # 1702
 	MOV  	ml_cap,#0CH
 ;             if (meas_level())
-			; SOURCE LINE # 1632
+			; SOURCE LINE # 1703
 	LCALL	meas_level
-	JNC  	?C0206
+	JNC  	?C0202
 ;                 ir_setbit(ir_ptridx);
-			; SOURCE LINE # 1633
+			; SOURCE LINE # 1704
 ;         } else {
-			; SOURCE LINE # 1634
-	SJMP 	?C0390
-?C0204:
+			; SOURCE LINE # 1705
+	SJMP 	?C0405
+?C0200:
 ;             ml_cap = 0;
-			; SOURCE LINE # 1635
+			; SOURCE LINE # 1706
 	CLR  	A
 	MOV  	ml_cap,A
 ;             if (meas_level())
-			; SOURCE LINE # 1636
+			; SOURCE LINE # 1707
 	LCALL	meas_level
-	JNC  	?C0207
+	JNC  	?C0203
 ;                 return 0;
-			; SOURCE LINE # 1637
+			; SOURCE LINE # 1708
 	CLR  	C
 	RET  	
-?C0207:
+?C0203:
 ;             if (ml_dur >= IR_BIT_TH)
-			; SOURCE LINE # 1638
+			; SOURCE LINE # 1709
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0BH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0206
+	JC   	?C0202
 ;                 ir_setbit(ir_ptridx);
-			; SOURCE LINE # 1639
-?C0390:
+			; SOURCE LINE # 1710
+?C0405:
 	MOV  	R7,ir_ptridx
 	LCALL	_ir_setbit
 ;         }
-			; SOURCE LINE # 1640
-?C0206:
+			; SOURCE LINE # 1711
+?C0202:
 ; 
 ;         /* ---- 每收一位（含 0 位）都推进掩码 ---- */
 ;         ir_maskb <<= 1;
-			; SOURCE LINE # 1643
+			; SOURCE LINE # 1714
 	MOV  	A,ir_maskb
 	ADD  	A,ACC
 	MOV  	ir_maskb,A
 ;         if (ir_maskb == 0) {
-			; SOURCE LINE # 1644
-	JNZ  	?C0209
+			; SOURCE LINE # 1715
+	JNZ  	?C0205
 ;             ir_maskb = 0x01;
-			; SOURCE LINE # 1645
+			; SOURCE LINE # 1716
 	MOV  	ir_maskb,#01H
 ;             ir_ptridx++;
-			; SOURCE LINE # 1646
+			; SOURCE LINE # 1717
 	INC  	ir_ptridx
 ;         }
-			; SOURCE LINE # 1647
-?C0209:
+			; SOURCE LINE # 1718
+?C0205:
 ;         ir_bits--;
-			; SOURCE LINE # 1648
-	DJNZ 	ir_bits,?C0200
+			; SOURCE LINE # 1719
+	DJNZ 	ir_bits,?C0196
 ;     }
-			; SOURCE LINE # 1649
-?C0201:
+			; SOURCE LINE # 1720
+?C0197:
 ; 
 ;     /* ---- 校验：地址与地址取反、命令与命令取反必须互补 ---- */
 ;     if ((unsigned char)~ir_ib0 != ir_ib1) return 0;
-			; SOURCE LINE # 1652
+			; SOURCE LINE # 1723
 	MOV  	A,ir_ib0
 	CPL  	A
 	XRL  	A,ir_ib1
-	JZ   	?C0210
+	JZ   	?C0206
 	CLR  	C
 	RET  	
-?C0210:
+?C0206:
 ;     if ((unsigned char)~ir_ib2 != ir_ib3) return 0;
-			; SOURCE LINE # 1653
+			; SOURCE LINE # 1724
 	MOV  	A,ir_ib2
 	CPL  	A
 	XRL  	A,ir_ib3
-	JZ   	?C0211
+	JZ   	?C0207
 	CLR  	C
 	RET  	
-?C0211:
+?C0207:
 ;     return 1;
-			; SOURCE LINE # 1654
+			; SOURCE LINE # 1725
 	SETB 	C
 ; }
-			; SOURCE LINE # 1655
-?C0203:
+			; SOURCE LINE # 1726
+?C0199:
 	RET  	
 ; END OF ir_decode_bits
 
@@ -3797,70 +3870,70 @@ ir_decode_bits:
 	RSEG  ?PR?ir_decode?MAIN
 ir_decode:
 	USING	0
-			; SOURCE LINE # 1658
+			; SOURCE LINE # 1729
 ; {
-			; SOURCE LINE # 1659
+			; SOURCE LINE # 1730
 ;     /* ---- 1) 引导码低电平，标称 9ms ---- */
 ;     ml_level = 0;
-			; SOURCE LINE # 1661
+			; SOURCE LINE # 1732
 	CLR  	A
 	MOV  	ml_level,A
 ;     ml_cap = 0;
-			; SOURCE LINE # 1662
+			; SOURCE LINE # 1733
 	MOV  	ml_cap,A
 ;     if (meas_level()) {                     /* 低电平一直不结束 */
-			; SOURCE LINE # 1663
+			; SOURCE LINE # 1734
 	LCALL	meas_level
-	JNC  	?C0212
+	JNC  	?C0208
 ;         irstat = 2;
-			; SOURCE LINE # 1664
-	SJMP 	?C0393
+			; SOURCE LINE # 1735
+	SJMP 	?C0408
 ;         return;
 ;     }
-			; SOURCE LINE # 1666
-?C0212:
+			; SOURCE LINE # 1737
+?C0208:
 ;     ir_ledlo = (unsigned char)ml_dur;       /* 先存下来：不合格时诊断要用 */
-			; SOURCE LINE # 1667
+			; SOURCE LINE # 1738
 	MOV  	ir_ledlo,ml_dur+01H
 ;     if (ml_dur > 255) {                     /* 超过 25.6ms -> 不是 NEC */
-			; SOURCE LINE # 1668
+			; SOURCE LINE # 1739
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0FFH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0214
+	JC   	?C0210
 ;         irstat = 2;
-			; SOURCE LINE # 1669
-?C0391:
-	SJMP 	?C0393
+			; SOURCE LINE # 1740
+?C0406:
+	SJMP 	?C0408
 ;         return;
 ;     }
-			; SOURCE LINE # 1671
-?C0214:
+			; SOURCE LINE # 1742
+?C0210:
 ;     if (ml_dur < IR_LEAD_MIN || ml_dur > IR_LEAD_MAX) {
-			; SOURCE LINE # 1672
+			; SOURCE LINE # 1743
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#046H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0216
+	JC   	?C0212
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#078H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0215
-?C0216:
+	JC   	?C0211
+?C0212:
 ;         irstat = 2;
-			; SOURCE LINE # 1673
-?C0392:
-	SJMP 	?C0393
+			; SOURCE LINE # 1744
+?C0407:
+	SJMP 	?C0408
 ;         return;
 ;     }
-			; SOURCE LINE # 1675
-?C0215:
+			; SOURCE LINE # 1746
+?C0211:
 ; 
 ;     /* ---- 2) 引导码高电平：靠“会不会变低”来区分完整帧和重复帧 ----
 ;      * 完整帧后面接着第一位的低电平，会变低；重复帧后面一直是高，不会变低。
@@ -3868,103 +3941,103 @@ ir_decode:
 ;      * 不能像量低电平那样一直等下去，否则重复帧必然超时，
 ;      * 松键停车也就永远刷不到时刻了。 */
 ;     ml_level = 1;
-			; SOURCE LINE # 1682
+			; SOURCE LINE # 1753
 	MOV  	ml_level,#01H
 ;     ml_cap = IR_LEADHCAP;
-			; SOURCE LINE # 1683
+			; SOURCE LINE # 1754
 	MOV  	ml_cap,#03CH
 ;     if (meas_level()) {                     /* 6ms 还高着 -> 重复帧 */
-			; SOURCE LINE # 1684
+			; SOURCE LINE # 1755
 	LCALL	meas_level
-	JNC  	?C0217
+	JNC  	?C0213
 ;         ir_ledhi = (unsigned char)ml_dur;
-			; SOURCE LINE # 1685
+			; SOURCE LINE # 1756
 	MOV  	ir_ledhi,ml_dur+01H
 ;         irstat = 3;
-			; SOURCE LINE # 1686
-	SJMP 	?C0394
+			; SOURCE LINE # 1757
+	SJMP 	?C0409
 ;         return;
 ;     }
-			; SOURCE LINE # 1688
-?C0217:
+			; SOURCE LINE # 1759
+?C0213:
 ;     ir_ledhi = (unsigned char)ml_dur;
-			; SOURCE LINE # 1689
+			; SOURCE LINE # 1760
 	MOV  	ir_ledhi,ml_dur+01H
 ;     if (ml_dur > 255) {
-			; SOURCE LINE # 1690
+			; SOURCE LINE # 1761
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0FFH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0218
+	JC   	?C0214
 ;         irstat = 3;
-			; SOURCE LINE # 1691
-?C0394:
+			; SOURCE LINE # 1762
+?C0409:
 	MOV  	irstat,#03H
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1693
-?C0218:
+			; SOURCE LINE # 1764
+?C0214:
 ;     if (ml_dur < IR_REP_MIN) {              /* < 1.2ms -> 噪声，不是引导码 */
-			; SOURCE LINE # 1694
+			; SOURCE LINE # 1765
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0CH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JNC  	?C0219
+	JNC  	?C0215
 ;         irstat = 2;
-			; SOURCE LINE # 1695
-?C0393:
+			; SOURCE LINE # 1766
+?C0408:
 	MOV  	irstat,#02H
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1697
-?C0219:
+			; SOURCE LINE # 1768
+?C0215:
 ;     if (ml_dur < IR_LEADH_MIN)
-			; SOURCE LINE # 1698
+			; SOURCE LINE # 1769
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#019H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JNC  	?C0220
+	JNC  	?C0216
 ;         ir_short = 1;                       /* 1.2~2.5ms：待定，看 32 位解不解得出来 */
-			; SOURCE LINE # 1699
+			; SOURCE LINE # 1770
 	SETB 	ir_short
-?C0220:
+?C0216:
 ; 
 ;     /* ---- 3) 收 32 位 ---- */
 ;     if (ir_decode_bits()) {
-			; SOURCE LINE # 1702
+			; SOURCE LINE # 1773
 	LCALL	ir_decode_bits
-	JNC  	?C0221
+	JNC  	?C0217
 ;         irstat = 0;                         /* 完整帧，键值在 ir_ib2 */
-			; SOURCE LINE # 1703
+			; SOURCE LINE # 1774
 	CLR  	A
 	MOV  	irstat,A
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1705
-?C0221:
+			; SOURCE LINE # 1776
+?C0217:
 ; 
 ;     /* ---- 32 位没解出来：区分"短引导码的帧解失败"和"重复帧" ---- */
 ;     irstat = ir_short ? 3 : 2;
-			; SOURCE LINE # 1708
-	JNB  	ir_short,?C0222
+			; SOURCE LINE # 1779
+	JNB  	ir_short,?C0218
 	MOV  	R7,#03H
-	SJMP 	?C0223
-?C0222:
+	SJMP 	?C0219
+?C0218:
 	MOV  	R7,#02H
-?C0223:
+?C0219:
 	MOV  	irstat,R7
 ; }
-			; SOURCE LINE # 1709
-?C0213:
+			; SOURCE LINE # 1780
+?C0209:
 	RET  	
 ; END OF ir_decode
 
@@ -3979,28 +4052,28 @@ ir_decode:
 	RSEG  ?PR?ir_recv?MAIN
 ir_recv:
 	USING	0
-			; SOURCE LINE # 1716
+			; SOURCE LINE # 1787
 ; {
-			; SOURCE LINE # 1717
+			; SOURCE LINE # 1788
 ;     unsigned int t0;
 ; 
 ;     ir_reset();
-			; SOURCE LINE # 1720
+			; SOURCE LINE # 1791
 	LCALL	ir_reset
 ; 
 ;     /* ---- 等 IR_IN 下降沿 ---- */
 ;     t0 = tick_get();
-			; SOURCE LINE # 1723
+			; SOURCE LINE # 1794
 	LCALL	tick_get
 ;---- Variable 't0?3263' assigned to Register 'R2/R3' ----
 	MOV  	R3,AR7
 	MOV  	R2,AR6
-?C0224:
+?C0220:
 ;     while (IR_IN) {
-			; SOURCE LINE # 1724
-	JNB  	IR_IN,?C0225
+			; SOURCE LINE # 1795
+	JNB  	IR_IN,?C0221
 ;         if ((unsigned int)(tick_get() - t0) > 255)
-			; SOURCE LINE # 1725
+			; SOURCE LINE # 1796
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -4014,18 +4087,18 @@ ir_recv:
 	SUBB 	A,#0FFH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0224
+	JC   	?C0220
 	RET  	
-?C0225:
+?C0221:
 ;             return;                         /* 超过 25.6ms 还没边沿 -> 真没信号，保持 irstat=1 */
 ;     }
 ; 
 ;     ir_decode();
-			; SOURCE LINE # 1729
+			; SOURCE LINE # 1800
 	LCALL	ir_decode
 ; }
-			; SOURCE LINE # 1730
-?C0227:
+			; SOURCE LINE # 1801
+?C0223:
 	RET  	
 ; END OF ir_recv
 
@@ -4040,23 +4113,23 @@ ir_recv:
 	RSEG  ?PR?ir_recv_nb?MAIN
 ir_recv_nb:
 	USING	0
-			; SOURCE LINE # 1737
+			; SOURCE LINE # 1808
 ; {
-			; SOURCE LINE # 1738
+			; SOURCE LINE # 1809
 ;     ir_reset();
-			; SOURCE LINE # 1739
+			; SOURCE LINE # 1810
 	LCALL	ir_reset
 ;     if (IR_IN)
-			; SOURCE LINE # 1740
-	JB   	IR_IN,?C0229
-?C0228:
+			; SOURCE LINE # 1811
+	JB   	IR_IN,?C0225
+?C0224:
 ;         return;                             /* 空闲高 -> 没有帧，立刻返回 */
 ;     ir_decode();
-			; SOURCE LINE # 1742
+			; SOURCE LINE # 1813
 	LCALL	ir_decode
 ; }
-			; SOURCE LINE # 1743
-?C0229:
+			; SOURCE LINE # 1814
+?C0225:
 	RET  	
 ; END OF ir_recv_nb
 
@@ -4067,16 +4140,16 @@ ir_recv_nb:
 	RSEG  ?PR?stamp_now?MAIN
 stamp_now:
 	USING	0
-			; SOURCE LINE # 1746
+			; SOURCE LINE # 1817
 ; {
-			; SOURCE LINE # 1747
+			; SOURCE LINE # 1818
 ;     lastt = tick_get();
-			; SOURCE LINE # 1748
+			; SOURCE LINE # 1819
 	LCALL	tick_get
 	MOV  	lastt,R6
 	MOV  	lastt+01H,R7
 ; }
-			; SOURCE LINE # 1749
+			; SOURCE LINE # 1820
 	RET  	
 ; END OF stamp_now
 
@@ -4086,9 +4159,9 @@ stamp_now:
 
 	RSEG  ?PR?ir_errpr?MAIN
 ir_errpr:
-			; SOURCE LINE # 1752
+			; SOURCE LINE # 1823
 ; {
-			; SOURCE LINE # 1753
+			; SOURCE LINE # 1824
 ; #if DEBUG_UART
 ;     if ((unsigned int)(tick_get() - last_err) < ERRTMO_TICKS)
 ;         return;
@@ -4107,7 +4180,7 @@ ir_errpr:
 ;     prt_hex(ir_ib3);
 ; #endif
 ; }
-			; SOURCE LINE # 1771
+			; SOURCE LINE # 1842
 	RET  	
 ; END OF ir_errpr
 
@@ -4120,43 +4193,43 @@ ir_errpr:
 	RSEG  ?PR?do_key?MAIN
 do_key:
 	USING	0
-			; SOURCE LINE # 1776
+			; SOURCE LINE # 1847
 ; {
-			; SOURCE LINE # 1777
+			; SOURCE LINE # 1848
 ;     unsigned char tgt, act;
 ; 
 ;     /* ---- ① 遥控一按，就把决定权交回给人 ----
 ;      * 如果正处在停车锁存状态，就地解除。放在最前面，
 ;      * 所以按任意键都算人来接管。 */
 ;     if (avst == AV_HOLD)
-			; SOURCE LINE # 1783
+			; SOURCE LINE # 1854
 	MOV  	A,avst
-	CJNE 	A,#02H,?C0232
+	CJNE 	A,#02H,?C0228
 ;         avst = AV_HUMAN;
-			; SOURCE LINE # 1784
+			; SOURCE LINE # 1855
 	MOV  	avst,#03H
-?C0232:
+?C0228:
 ; 
 ;     /* ---- ② 三个功能键优先处理，且不再往下走常规流程 ----
 ;      *（不进 key2mode、不进 key2act，所以不会驱动电机，也不会被当成"不认识的键"）*/
 ;     if (ir_ib2 == KEY_REC)  { rec_key();  return; }
-			; SOURCE LINE # 1788
+			; SOURCE LINE # 1859
 	MOV  	A,ir_ib2
-	CJNE 	A,#042H,?C0233
+	CJNE 	A,#042H,?C0229
 	LJMP 	rec_key
-?C0233:
+?C0229:
 ;     if (ir_ib2 == KEY_CLR)  { clr_key();  return; }
-			; SOURCE LINE # 1789
+			; SOURCE LINE # 1860
 	MOV  	A,ir_ib2
-	CJNE 	A,#04AH,?C0235
+	CJNE 	A,#04AH,?C0231
 	LJMP 	clr_key
-?C0235:
+?C0231:
 ;     if (ir_ib2 == KEY_PLAY) { play_key(); return; }
-			; SOURCE LINE # 1790
+			; SOURCE LINE # 1861
 	MOV  	A,ir_ib2
-	CJNE 	A,#052H,?C0236
+	CJNE 	A,#052H,?C0232
 	LJMP 	play_key
-?C0236:
+?C0232:
 ; 
 ;     prt_key();                              /* 打印原始键值（测其余键值就靠这一行）*/
 ; 
@@ -4165,193 +4238,193 @@ do_key:
 ;      * 这里不限制录制中不能按：录制记的是人的操作意图，避障开关不进记录。
 ;      * 回放中按它不生效，回放只认停止、方向和回放键。 */
 ;     if (ir_ib2 == KEY_AVOID) {
-			; SOURCE LINE # 1798
+			; SOURCE LINE # 1869
 	MOV  	A,ir_ib2
-	CJNE 	A,#01CH,?C0237
+	CJNE 	A,#01CH,?C0233
 ;         avoid_toggle();
-			; SOURCE LINE # 1799
+			; SOURCE LINE # 1870
 	LJMP 	avoid_toggle
 ;         return;
 ;     }
-			; SOURCE LINE # 1801
-?C0237:
+			; SOURCE LINE # 1872
+?C0233:
 ; 
 ;     /* ---- ③ 遥控数字键 1/2/3 直接选模式 ---- */
 ;     tgt = key2mode(ir_ib2);
-			; SOURCE LINE # 1804
+			; SOURCE LINE # 1875
 	MOV  	R7,ir_ib2
 	LCALL	_key2mode
 ;---- Variable 'tgt?3664' assigned to Register 'R4' ----
 	MOV  	R4,AR7
 ;     if (tgt != 0xFF) {
-			; SOURCE LINE # 1805
+			; SOURCE LINE # 1876
 	MOV  	A,R4
 	CPL  	A
-	JZ   	?C0238
+	JZ   	?C0234
 ;         if (recon) {
-			; SOURCE LINE # 1806
-	JNB  	recon,?C0239
+			; SOURCE LINE # 1877
+	JNB  	recon,?C0235
 ;             /* 录制中不允许切换模式：录制中切到寻光、循迹这类自动模式没有意义，
 ;              * 而且模式动作会改掉当前动作，把记录弄乱。这里响两声拒绝。 */
 ;             beep(BEEP_KEY);
-			; SOURCE LINE # 1809
+			; SOURCE LINE # 1880
 ;             d_20ms();
-			; SOURCE LINE # 1810
-	LCALL	L?0405
+			; SOURCE LINE # 1881
+	LCALL	L?0420
 ;             beep(BEEP_KEY);
-			; SOURCE LINE # 1811
-	SJMP 	?C0398
+			; SOURCE LINE # 1882
+	SJMP 	?C0413
 ;             return;
 ;         }
-			; SOURCE LINE # 1813
-?C0239:
+			; SOURCE LINE # 1884
+?C0235:
 ;         if (tgt == mode) {                  /* 已经就是这个模式 -> 只响一声，不做动作 */
-			; SOURCE LINE # 1814
+			; SOURCE LINE # 1885
 	MOV  	A,R4
-	CJNE 	A,mode,?C0240
+	CJNE 	A,mode,?C0236
 ;             beep(BEEP_KEY);
-			; SOURCE LINE # 1815
-?C0395:
-	SJMP 	?C0398
+			; SOURCE LINE # 1886
+?C0410:
+	SJMP 	?C0413
 ;             return;
 ;         }
-			; SOURCE LINE # 1817
-?C0240:
+			; SOURCE LINE # 1888
+?C0236:
 ;         mode_goto(tgt);
-			; SOURCE LINE # 1818
+			; SOURCE LINE # 1889
 	MOV  	R7,AR4
 	LJMP 	_mode_goto
 ;         return;
 ;     }
-			; SOURCE LINE # 1820
-?C0238:
+			; SOURCE LINE # 1891
+?C0234:
 ; 
 ;     /* ---- ④ 遥控加/减档（全局功能：任何模式下都生效）---- */
 ;     if (ir_ib2 == KEY_SPD_UP) {
-			; SOURCE LINE # 1823
+			; SOURCE LINE # 1894
 	MOV  	A,ir_ib2
-	CJNE 	A,#05AH,?C0241
+	CJNE 	A,#05AH,?C0237
 ;         if (gear >= MAXGEAR)
-			; SOURCE LINE # 1824
+			; SOURCE LINE # 1895
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0234
-?C0242:
+	JNC  	?C0230
+?C0238:
 ;             return;
 ;         gear++;
-			; SOURCE LINE # 1826
+			; SOURCE LINE # 1897
 	INC  	gear
 ;     } else if (ir_ib2 == KEY_SPD_DN) {
-			; SOURCE LINE # 1827
-	SJMP 	?C0243
-?C0241:
+			; SOURCE LINE # 1898
+	SJMP 	?C0239
+?C0237:
 	MOV  	A,ir_ib2
-	CJNE 	A,#08H,?C0244
+	CJNE 	A,#08H,?C0240
 ;         if (gear == 0)
-			; SOURCE LINE # 1828
+			; SOURCE LINE # 1899
 	MOV  	A,gear
-	JZ   	?C0234
-?C0245:
+	JZ   	?C0230
+?C0241:
 ;             return;
 ;         gear--;
-			; SOURCE LINE # 1830
+			; SOURCE LINE # 1901
 	DEC  	gear
 ;     } else {
-			; SOURCE LINE # 1831
-	SJMP 	?C0243
-?C0244:
+			; SOURCE LINE # 1902
+	SJMP 	?C0239
+?C0240:
 ;         /* ---- ⑤ 方向键和停止键 -> 动作 ----
 ;          * 这里不做同一个键的去重：同键第二次真按下去也必须生效，
 ;          * 否则加减档只能调一次，模式键连按也会失效。 */
 ;         act = key2act(ir_ib2);
-			; SOURCE LINE # 1835
+			; SOURCE LINE # 1906
 	MOV  	R7,ir_ib2
 	LCALL	_key2act
 ;---- Variable 'act?3665' assigned to Register 'R7' ----
 ; 
 ;         if (act == ACT_NONE) {              /* 不认识的键：只打印，不动电机 */
-			; SOURCE LINE # 1837
+			; SOURCE LINE # 1908
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0234
+	JZ   	?C0230
 ;             prt_str(" UNKNOWN KEY (no motor change)");
 ;             return;
 ;         }
-			; SOURCE LINE # 1840
-?C0247:
+			; SOURCE LINE # 1911
+?C0243:
 ; 
 ;         if (act == ACT_STOP) {              /* 停止键：最高优先级 */
-			; SOURCE LINE # 1842
+			; SOURCE LINE # 1913
 	MOV  	A,R7
-	JNZ  	?C0248
+	JNZ  	?C0244
 ;             cur_act = ACT_STOP;
-			; SOURCE LINE # 1843
+			; SOURCE LINE # 1914
 	MOV  	cur_act,A
 ;             motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 1844
+			; SOURCE LINE # 1915
 	MOV  	R5,A
 	MOV  	R7,A
 ;         } else {
-			; SOURCE LINE # 1845
-	SJMP 	?C0397
-?C0248:
+			; SOURCE LINE # 1916
+	SJMP 	?C0412
+?C0244:
 ;             if (gear == 0)
-			; SOURCE LINE # 1846
+			; SOURCE LINE # 1917
 	MOV  	A,gear
-	JNZ  	?C0250
+	JNZ  	?C0246
 ;                 gear = GEAR_DEFAULT;        /* 0 档按方向键 -> 自动跳默认档，否则车不动 */
-			; SOURCE LINE # 1847
+			; SOURCE LINE # 1918
 	MOV  	gear,#03H
-?C0250:
+?C0246:
 ;             cur_act = act;
-			; SOURCE LINE # 1848
+			; SOURCE LINE # 1919
 	MOV  	cur_act,R7
 ;             motor_set(act, gear);
-			; SOURCE LINE # 1849
+			; SOURCE LINE # 1920
 	MOV  	R5,gear
-?C0397:
-	LCALL	_motor_set
+?C0412:
+	LCALL	_motor_set_core
 ;         }
-			; SOURCE LINE # 1850
-?C0249:
+			; SOURCE LINE # 1921
+?C0245:
 ; 
 ;         show_state();                       /* 显示档位，D3 亮 = 正在动 */
-			; SOURCE LINE # 1852
+			; SOURCE LINE # 1923
 	LCALL	show_state
 ;         prt_actname();
 ;         beep(BEEP_KEY);                     /* 响一声（不用看串口也知道收到了）*/
-			; SOURCE LINE # 1854
-?C0396:
-	SJMP 	?C0398
+			; SOURCE LINE # 1925
+?C0411:
+	SJMP 	?C0413
 ;         return;
 ;     }
-			; SOURCE LINE # 1856
-?C0243:
+			; SOURCE LINE # 1927
+?C0239:
 ; 
 ;     /* ---- 加/减档的收尾：正在动就用新档位重新套用当前动作 ---- */
 ;     if (cur_act != 0)
-			; SOURCE LINE # 1859
+			; SOURCE LINE # 1930
 	MOV  	A,cur_act
-	JZ   	?C0251
+	JZ   	?C0247
 ;         motor_set(cur_act, gear);
-			; SOURCE LINE # 1860
+			; SOURCE LINE # 1931
 	MOV  	R5,gear
 	MOV  	R7,A
-	LCALL	_motor_set
-?C0251:
+	LCALL	_motor_set_core
+?C0247:
 ;     show_state();
-			; SOURCE LINE # 1861
+			; SOURCE LINE # 1932
 	LCALL	show_state
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 1862
-?C0398:
+			; SOURCE LINE # 1933
+?C0413:
 	MOV  	R7,#018H
 	LCALL	_beep
 ;     prt_gear();
 ; }
-			; SOURCE LINE # 1864
-?C0234:
+			; SOURCE LINE # 1935
+?C0230:
 	RET  	
 ; END OF do_key
 
@@ -4369,37 +4442,37 @@ do_key:
 	RSEG  ?PR?ir_holdchk?MAIN
 ir_holdchk:
 	USING	0
-			; SOURCE LINE # 1874
+			; SOURCE LINE # 1945
 ; {
-			; SOURCE LINE # 1875
+			; SOURCE LINE # 1946
 ;     unsigned int d;
 ; 
 ;     if (cur_act == ACT_STOP)
-			; SOURCE LINE # 1878
+			; SOURCE LINE # 1949
 	MOV  	A,cur_act
-	JZ   	?C0253
-?C0252:
+	JZ   	?C0249
+?C0248:
 ;         return;                             /* 本来就在停 -> 不用管 */
 ; 
 ;     if (avst != AV_HUMAN && !recon) {       /* 录制中不做“前进按一下一直走”那一套 */
-			; SOURCE LINE # 1881
+			; SOURCE LINE # 1952
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0254
-	JB   	recon,?C0254
+	JZ   	?C0250
+	JB   	recon,?C0250
 ;         if (cur_act == ACT_FORWARD)
-			; SOURCE LINE # 1882
+			; SOURCE LINE # 1953
 	MOV  	A,cur_act
 	XRL  	A,#01H
-	JZ   	?C0253
-?C0255:
+	JZ   	?C0249
+?C0251:
 ;             return;                         /* 前进：锁定式，不因松手停车 */
 ;     }
-			; SOURCE LINE # 1884
-?C0254:
+			; SOURCE LINE # 1955
+?C0250:
 ; 
 ;     d = (unsigned int)(tick_get() - lastt);
-			; SOURCE LINE # 1886
+			; SOURCE LINE # 1957
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -4410,68 +4483,68 @@ ir_holdchk:
 	MOV  	R6,A
 ;---- Variable 'd?3766' assigned to Register 'R6/R7' ----
 ;     if (d < HOLD_TMO_TICKS)
-			; SOURCE LINE # 1887
+			; SOURCE LINE # 1958
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#0B8H
 	MOV  	A,R6
 	SUBB 	A,#0BH
-	JC   	?C0253
-?C0256:
+	JC   	?C0249
+?C0252:
 ;         return;                             /* 还没到 300ms */
 ; 
 ;     /* 超时了，说明松手了。弧线松手回到前进（前进本来就是按一下一直走），
 ;      * 其它动作松手就停车。 */
 ;     if (!recon && (cur_act == ACT_ARC_L || cur_act == ACT_ARC_R))
-			; SOURCE LINE # 1892
-	JB   	recon,?C0257
+			; SOURCE LINE # 1963
+	JB   	recon,?C0253
 	MOV  	A,cur_act
 	XRL  	A,#05H
-	JZ   	?C0258
+	JZ   	?C0254
 	MOV  	A,cur_act
-	CJNE 	A,#06H,?C0257
-?C0258:
+	CJNE 	A,#06H,?C0253
+?C0254:
 ;         cur_act = ACT_FORWARD;
-			; SOURCE LINE # 1893
+			; SOURCE LINE # 1964
 	MOV  	cur_act,#01H
-	SJMP 	?C0259
-?C0257:
+	SJMP 	?C0255
+?C0253:
 ;     else
 ;         cur_act = ACT_STOP;
-			; SOURCE LINE # 1895
+			; SOURCE LINE # 1966
 	CLR  	A
 	MOV  	cur_act,A
-?C0259:
+?C0255:
 ; 
 ;     motor_set(cur_act, cur_act == ACT_STOP ? 0 : gear);
-			; SOURCE LINE # 1897
+			; SOURCE LINE # 1968
 	MOV  	A,cur_act
-	JNZ  	?C0260
+	JNZ  	?C0256
 	MOV  	R5,A
-	SJMP 	?C0261
-?C0260:
+	SJMP 	?C0257
+?C0256:
 	MOV  	R7,gear
 	MOV  	R5,AR7
-?C0261:
+?C0257:
 ;     show_state();                           /* 显示也要跟着更新，否则 D3 还亮着"在动" */
-			; SOURCE LINE # 1898
-	LCALL	L?0410
+			; SOURCE LINE # 1969
+	LCALL	L?0427
 ;     lastcmd = LASTCMD_NONE;                 /* 允许同一个键再按一次 */
-			; SOURCE LINE # 1899
+			; SOURCE LINE # 1970
 	MOV  	lastcmd,#0FFH
 ; 
 ;     if (avst == AV_HUMAN)
-			; SOURCE LINE # 1901
+			; SOURCE LINE # 1972
 	MOV  	A,avst
-	CJNE 	A,#03H,?C0253
+	CJNE 	A,#03H,?C0249
 ;         avst = AV_FREE;                     /* 接管只用一次 -> 避障重新武装 */
-			; SOURCE LINE # 1902
+			; SOURCE LINE # 1973
 	CLR  	A
 	MOV  	avst,A
 ;     prt_release();
 ; }
-			; SOURCE LINE # 1904
-?C0253:
+			; SOURCE LINE # 1975
+?C0249:
 	RET  	
 ; END OF ir_holdchk
 
@@ -4486,49 +4559,49 @@ ir_holdchk:
 	RSEG  ?PR?back_guard?MAIN
 back_guard:
 	USING	0
-			; SOURCE LINE # 1911
+			; SOURCE LINE # 1982
 ; {
-			; SOURCE LINE # 1912
+			; SOURCE LINE # 1983
 ;     if (mode != MODE_MANUAL)                /* 回放/自主模式不改写 */
-			; SOURCE LINE # 1913
+			; SOURCE LINE # 1984
 	MOV  	A,mode
-	JNZ  	?C0264
-?C0263:
+	JNZ  	?C0260
+?C0259:
 ;         return;
 ; 
 ;     if (cur_act != ACT_BACK) {              /* 没在倒车 -> 复位计时 */
-			; SOURCE LINE # 1916
+			; SOURCE LINE # 1987
 	MOV  	A,cur_act
 	XRL  	A,#02H
-	JZ   	?C0265
+	JZ   	?C0261
 ;         back_on = 0;
-			; SOURCE LINE # 1917
+			; SOURCE LINE # 1988
 	CLR  	back_on
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1919
-?C0265:
+			; SOURCE LINE # 1990
+?C0261:
 ; 
 ;     if (!back_on) {                         /* 刚开始倒车：记下时刻 */
-			; SOURCE LINE # 1921
-	JB   	back_on,?C0266
+			; SOURCE LINE # 1992
+	JB   	back_on,?C0262
 ;         back_on = 1;
-			; SOURCE LINE # 1922
+			; SOURCE LINE # 1993
 	SETB 	back_on
 ;         back_t0 = tick_get();
-			; SOURCE LINE # 1923
+			; SOURCE LINE # 1994
 	LCALL	tick_get
 	MOV  	back_t0,R6
 	MOV  	back_t0+01H,R7
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1925
-?C0266:
+			; SOURCE LINE # 1996
+?C0262:
 ; 
 ;     if ((unsigned int)(tick_get() - back_t0) < BACK_TMO_TICKS)
-			; SOURCE LINE # 1927
+			; SOURCE LINE # 1998
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -4542,35 +4615,35 @@ back_guard:
 	SUBB 	A,#030H
 	MOV  	A,R6
 	SUBB 	A,#075H
-	JC   	?C0264
-?C0267:
+	JC   	?C0260
+?C0263:
 ;         return;                             /* 还没到时限 */
 ; 
 ;     /* ---- 到时限：停车 + 两声（与其它提示音区分）---- */
 ;     back_on = 0;
-			; SOURCE LINE # 1931
+			; SOURCE LINE # 2002
 	CLR  	back_on
 ;     cur_act = ACT_STOP;
-			; SOURCE LINE # 1932
+			; SOURCE LINE # 2003
 ;     motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 1933
-	LCALL	L?0408
+			; SOURCE LINE # 2004
+	LCALL	L?0423
 ;     show_state();
-			; SOURCE LINE # 1934
+			; SOURCE LINE # 2005
 	LCALL	show_state
 ;     beepwhy('B');                           /* 诊断：倒车限时自停 */
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 1936
+			; SOURCE LINE # 2007
 ;     d_20ms();
-			; SOURCE LINE # 1937
-	LCALL	L?0406
+			; SOURCE LINE # 2008
+	LCALL	L?0421
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 1938
+			; SOURCE LINE # 2009
 	MOV  	R7,#018H
 	LCALL	_beep
 ; }
-			; SOURCE LINE # 1939
-?C0264:
+			; SOURCE LINE # 2010
+?C0260:
 	RET  	
 ; END OF back_guard
 
@@ -4592,74 +4665,74 @@ back_guard:
 	RSEG  ?PR?prox_beep?MAIN
 prox_beep:
 	USING	0
-			; SOURCE LINE # 1953
+			; SOURCE LINE # 2024
 ;---- Variable 'wait?3968' assigned to Register 'R2/R3' ----
 ; {
-			; SOURCE LINE # 1954
+			; SOURCE LINE # 2025
 ;     unsigned int d, wait;
 ; 
 ;     if (avoid_off() == 0)                   /* 避障在参与 -> 不响（避障自己负责）*/
-			; SOURCE LINE # 1957
+			; SOURCE LINE # 2028
 	LCALL	avoid_off
 	JC   	$ + 5H
-	LJMP 	?C0269
-?C0268:
+	LJMP 	?C0265
+?C0264:
 ;         return;                             /* 录制中也算不参与，所以提示音照响 */
 ;     if (mode == MODE_PLAY || mode == MODE_TRACK)
-			; SOURCE LINE # 1959
+			; SOURCE LINE # 2030
 	MOV  	A,mode
 	XRL  	A,#03H
 	JNZ  	$ + 5H
-	LJMP 	?C0269
+	LJMP 	?C0265
 	MOV  	A,mode
 	XRL  	A,#02H
 	JNZ  	$ + 5H
-	LJMP 	?C0269
-?C0270:
+	LJMP 	?C0265
+?C0266:
 ;         return;
 ; 
 ;     /* ---- 倒车的时候不响，顺便把状态清掉，免得停车以后又接着响 ---- */
 ;     if (cur_act == ACT_BACK) {
-			; SOURCE LINE # 1963
+			; SOURCE LINE # 2034
 	MOV  	A,cur_act
-	CJNE 	A,#02H,?C0272
+	CJNE 	A,#02H,?C0268
 ;         prox_moving = 0;
-			; SOURCE LINE # 1964
+			; SOURCE LINE # 2035
 	CLR  	prox_moving
 ;         prox_hold = 0;                      /* 倒车不算"停车宽限" */
-			; SOURCE LINE # 1965
+			; SOURCE LINE # 2036
 	CLR  	prox_hold
 	RET  	
 ;         return;
 ;     }
-			; SOURCE LINE # 1967
-?C0272:
+			; SOURCE LINE # 2038
+?C0268:
 ; 
 ;     /* ---- 停车以后只再响约 2 秒：停下的瞬间还能听出离墙有多远 ---- */
 ;     if (cur_act == ACT_STOP) {
-			; SOURCE LINE # 1970
+			; SOURCE LINE # 2041
 	MOV  	A,cur_act
-	JNZ  	?C0273
+	JNZ  	?C0269
 ;         if (prox_moving) {                  /* 刚从"动"变成"停"：开始 2s 宽限 */
-			; SOURCE LINE # 1971
-	JNB  	prox_moving,?C0274
+			; SOURCE LINE # 2042
+	JNB  	prox_moving,?C0270
 ;             prox_moving = 0;
-			; SOURCE LINE # 1972
+			; SOURCE LINE # 2043
 	CLR  	prox_moving
 ;             prox_hold = 1;
-			; SOURCE LINE # 1973
+			; SOURCE LINE # 2044
 	SETB 	prox_hold
 ;             prox_stop_t = tick_get();
-			; SOURCE LINE # 1974
+			; SOURCE LINE # 2045
 	LCALL	tick_get
 	MOV  	prox_stop_t,R6
 	MOV  	prox_stop_t+01H,R7
 ;         }
-			; SOURCE LINE # 1975
-?C0274:
+			; SOURCE LINE # 2046
+?C0270:
 ;         if (prox_hold && (unsigned int)(tick_get() - prox_stop_t) >= PROX_HOLD_TICKS)
-			; SOURCE LINE # 1976
-	JNB  	prox_hold,?C0275
+			; SOURCE LINE # 2047
+	JNB  	prox_hold,?C0271
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -4673,85 +4746,85 @@ prox_beep:
 	SUBB 	A,#020H
 	MOV  	A,R6
 	SUBB 	A,#04EH
-	JC   	?C0275
+	JC   	?C0271
 ;             prox_hold = 0;                  /* 宽限到点 -> 永久静音 */
-			; SOURCE LINE # 1977
+			; SOURCE LINE # 2048
 	CLR  	prox_hold
-?C0275:
+?C0271:
 ;         if (!prox_hold)
-			; SOURCE LINE # 1978
-	JB   	prox_hold,?C0277
+			; SOURCE LINE # 2049
+	JB   	prox_hold,?C0273
 	RET  	
-?C0273:
+?C0269:
 ;             return;                         /* 停稳超过 2s -> 一声都不响 */
 ;     } else {
 ;         prox_moving = 1;
-			; SOURCE LINE # 1981
+			; SOURCE LINE # 2052
 	SETB 	prox_moving
 ;         prox_hold = 0;                      /* 又动了 -> 撤销静音（重新武装）*/
-			; SOURCE LINE # 1982
+			; SOURCE LINE # 2053
 	CLR  	prox_hold
 ;     }
-			; SOURCE LINE # 1983
-?C0277:
+			; SOURCE LINE # 2054
+?C0273:
 ; 
 ;     d = us_read();                          /* 非阻塞；内部已做 ≥60ms 节流 */
-			; SOURCE LINE # 1985
+			; SOURCE LINE # 2056
 	LCALL	us_read
 	MOV  	R6,#00H
 ;---- Variable 'd?3967' assigned to Register 'R6/R7' ----
 ;     if (d >= US_NEAR)                       /* 够远 / 读不到(US_FAR) -> 不响 */
-			; SOURCE LINE # 1986
+			; SOURCE LINE # 2057
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#0CH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0269
-?C0278:
+	JNC  	?C0265
+?C0274:
 ;         return;
 ; 
 ;     if (d < US_STOP && cur_act != ACT_STOP) {   /* 最近档 且正在动 -> 连续响 */
-			; SOURCE LINE # 1989
+			; SOURCE LINE # 2060
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#03H
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0279
+	JNC  	?C0275
 	MOV  	A,cur_act
-	JZ   	?C0279
+	JZ   	?C0275
 ;         beepwhy('P');                       /* 诊断：近距连续响 */
 ;         beep(PROX_SOLID);
-			; SOURCE LINE # 1991
+			; SOURCE LINE # 2062
 	MOV  	R7,#0C8H
-	SJMP 	?C0399
+	SJMP 	?C0414
 ;         return;
 ;     }
-			; SOURCE LINE # 1993
-?C0279:
+			; SOURCE LINE # 2064
+?C0275:
 ; 
 ;     /* 响的间隔：越近间隔越短。
 ;      * 算间隔用移位，不用乘法 —— 乘法会让编译器去调库函数，
 ;      * 本工程是手工排地址的，能少一个外部符号就少一个。
 ;      * 车停着的时候最近档也不长鸣，用最急的间歇，免得停在墙前一直叫。 */
 ;     if (d < US_STOP)
-			; SOURCE LINE # 1999
+			; SOURCE LINE # 2070
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#03H
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0280
+	JNC  	?C0276
 ;         wait = PROX_INT_MIN;
-			; SOURCE LINE # 2000
+			; SOURCE LINE # 2071
 	MOV  	R2,#03H
 	MOV  	R3,#0E8H
-	SJMP 	?C0281
-?C0280:
+	SJMP 	?C0277
+?C0276:
 ;     else
 ;         wait = PROX_INT_MIN + ((unsigned int)(d - US_STOP) << PROX_INT_SH);
-			; SOURCE LINE # 2002
+			; SOURCE LINE # 2073
 	MOV  	A,R7
 	ADD  	A,#0FDH
 	MOV  	R7,A
@@ -4764,9 +4837,9 @@ prox_beep:
 	MOV  	A,R6
 	ADDC 	A,#03H
 	MOV  	R2,A
-?C0281:
+?C0277:
 ;     if ((unsigned int)(tick_get() - prox_t) < wait)
-			; SOURCE LINE # 2003
+			; SOURCE LINE # 2074
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -4780,23 +4853,23 @@ prox_beep:
 	SUBB 	A,R3
 	MOV  	A,R6
 	SUBB 	A,R2
-	JC   	?C0269
-?C0282:
+	JC   	?C0265
+?C0278:
 ;         return;
 ;     prox_t = tick_get();
-			; SOURCE LINE # 2005
+			; SOURCE LINE # 2076
 	LCALL	tick_get
 	MOV  	prox_t,R6
 	MOV  	prox_t+01H,R7
 ;     beepwhy('Q');                           /* 诊断：近距间歇响 */
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 2007
+			; SOURCE LINE # 2078
 	MOV  	R7,#018H
-?C0399:
+?C0414:
 	LCALL	_beep
 ; }
-			; SOURCE LINE # 2008
-?C0269:
+			; SOURCE LINE # 2079
+?C0265:
 	RET  	
 ; END OF prox_beep
 
@@ -4817,18 +4890,18 @@ prox_beep:
 	RSEG  ?PR?rec_halt?MAIN
 rec_halt:
 	USING	0
-			; SOURCE LINE # 2021
+			; SOURCE LINE # 2092
 ; {
-			; SOURCE LINE # 2022
+			; SOURCE LINE # 2093
 ;     cur_act = ACT_STOP;
-			; SOURCE LINE # 2023
+			; SOURCE LINE # 2094
 	CLR  	A
 	MOV  	cur_act,A
 ;     motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 2024
+			; SOURCE LINE # 2095
 	MOV  	R5,A
 	MOV  	R7,A
-	LJMP 	_motor_set
+	LJMP 	_motor_set_core
 ; END OF rec_halt
 
 ; }
@@ -4842,45 +4915,45 @@ rec_halt:
 	RSEG  ?PR?rec_commit?MAIN
 rec_commit:
 	USING	0
-			; SOURCE LINE # 2031
+			; SOURCE LINE # 2102
 ; {
-			; SOURCE LINE # 2032
+			; SOURCE LINE # 2103
 ;     unsigned int addr;
 ; 
 ;     if ((pack & ACTPK_MASK) == 0 && recn == 0) {
-			; SOURCE LINE # 2035
+			; SOURCE LINE # 2106
 	MOV  	A,pack
 	ANL  	A,#0F0H
-	JNZ  	?C0284
+	JNZ  	?C0280
 	MOV  	A,recn
-	JNZ  	?C0284
+	JNZ  	?C0280
 ;         cur_dur = 0;                        /* 前导 STOP -> 丢弃 */
-			; SOURCE LINE # 2036
+			; SOURCE LINE # 2107
 ;         return 1;
-			; SOURCE LINE # 2037
-	SJMP 	?C0400
+			; SOURCE LINE # 2108
+	SJMP 	?C0415
 ;     }
-			; SOURCE LINE # 2038
-?C0284:
+			; SOURCE LINE # 2109
+?C0280:
 ; 
 ;     if (recn >= REC_MAX) {
-			; SOURCE LINE # 2040
+			; SOURCE LINE # 2111
 	MOV  	A,recn
 	CLR  	C
 	SUBB 	A,#050H
-	JC   	?C0286
+	JC   	?C0282
 ;         recfull = 1;                        /* 已满 80 条 */
-			; SOURCE LINE # 2041
+			; SOURCE LINE # 2112
 	SETB 	recfull
 ;         return 0;
-			; SOURCE LINE # 2042
+			; SOURCE LINE # 2113
 	RET  	
 ;     }
-			; SOURCE LINE # 2043
-?C0286:
+			; SOURCE LINE # 2114
+?C0282:
 ; 
 ;     addr = REC_ADDR(recn);
-			; SOURCE LINE # 2045
+			; SOURCE LINE # 2116
 	MOV  	A,recn
 	MOV  	R5,A
 	MOV  	R4,#00H
@@ -4898,18 +4971,18 @@ rec_commit:
 	MOV  	R5,AR7
 	MOV  	R4,A
 ;     XBYTE[REC_BASE + addr]     = pack;      /* Byte0 = (动作<<4)|档位 */
-			; SOURCE LINE # 2046
+			; SOURCE LINE # 2117
 	MOV  	DPL,R5
 	MOV  	DPH,A
 	MOV  	A,pack
 	MOVX 	@DPTR,A
 ;     XBYTE[REC_BASE + addr + 1] = (unsigned char)cur_dur;          /* 时长低 */
-			; SOURCE LINE # 2047
+			; SOURCE LINE # 2118
 	INC  	DPTR
 	MOV  	A,cur_dur+01H
 	MOVX 	@DPTR,A
 ;     XBYTE[REC_BASE + addr + 2] = (unsigned char)(cur_dur >> 8);   /* 时长高 */
-			; SOURCE LINE # 2048
+			; SOURCE LINE # 2119
 	MOV  	A,cur_dur
 	MOV  	DPL,R5
 	MOV  	DPH,R4
@@ -4918,31 +4991,31 @@ rec_commit:
 	MOVX 	@DPTR,A
 ; 
 ;     recn++;
-			; SOURCE LINE # 2050
+			; SOURCE LINE # 2121
 	INC  	recn
 ;     if (recn >= REC_MAX)
-			; SOURCE LINE # 2051
+			; SOURCE LINE # 2122
 	MOV  	A,recn
 	CLR  	C
 	SUBB 	A,#050H
-	JC   	?C0287
+	JC   	?C0283
 ;         recfull = 1;
-			; SOURCE LINE # 2052
+			; SOURCE LINE # 2123
 	SETB 	recfull
-?C0287:
+?C0283:
 ; 
 ;     cur_dur = 0;
-			; SOURCE LINE # 2054
+			; SOURCE LINE # 2125
 	CLR  	A
-?C0400:
+?C0415:
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     return 1;
-			; SOURCE LINE # 2055
+			; SOURCE LINE # 2126
 	SETB 	C
 ; }
-			; SOURCE LINE # 2056
-?C0285:
+			; SOURCE LINE # 2127
+?C0281:
 	RET  	
 ; END OF rec_commit
 
@@ -4953,32 +5026,32 @@ rec_commit:
 	RSEG  ?PR?rec_err?MAIN
 rec_err:
 	USING	0
-			; SOURCE LINE # 2059
+			; SOURCE LINE # 2130
 ; {
-			; SOURCE LINE # 2060
+			; SOURCE LINE # 2131
 ;     P2 = d3_mix(DISP_E);
-			; SOURCE LINE # 2061
+			; SOURCE LINE # 2132
 	MOV  	R7,#061H
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 2062
+			; SOURCE LINE # 2133
 ;     d_20ms();
-			; SOURCE LINE # 2063
-	LCALL	L?0406
+			; SOURCE LINE # 2134
+	LCALL	L?0421
 ;     d_20ms();
-			; SOURCE LINE # 2064
+			; SOURCE LINE # 2135
 	LCALL	d_20ms
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 2065
+			; SOURCE LINE # 2136
 ;     d_20ms();
-			; SOURCE LINE # 2066
-	LCALL	L?0406
+			; SOURCE LINE # 2137
+	LCALL	L?0421
 ;     d_20ms();
-			; SOURCE LINE # 2067
+			; SOURCE LINE # 2138
 	LCALL	d_20ms
 ;     show_state();
-			; SOURCE LINE # 2068
+			; SOURCE LINE # 2139
 	LJMP 	show_state
 ; END OF rec_err
 
@@ -4991,50 +5064,50 @@ rec_err:
 	RSEG  ?PR?rec_fullstop?MAIN
 rec_fullstop:
 	USING	0
-			; SOURCE LINE # 2073
+			; SOURCE LINE # 2144
 ; {
-			; SOURCE LINE # 2074
+			; SOURCE LINE # 2145
 ;     unsigned char i;
 ; 
 ;     recon = 0;
-			; SOURCE LINE # 2077
+			; SOURCE LINE # 2148
 	CLR  	recon
 ;     cur_dur = 0;
-			; SOURCE LINE # 2078
+			; SOURCE LINE # 2149
 	CLR  	A
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     rec_halt();
-			; SOURCE LINE # 2079
+			; SOURCE LINE # 2150
 	LCALL	rec_halt
 ; 
 ;     for (i = 0; i < 20; i++) {              /* 20 × 20ms = 400ms */
-			; SOURCE LINE # 2081
+			; SOURCE LINE # 2152
 	CLR  	A
 	MOV  	i?4370,A
-?C0289:
+?C0285:
 ;         P2 = d3_mix(DISP_F);
-			; SOURCE LINE # 2082
+			; SOURCE LINE # 2153
 	MOV  	R7,#071H
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ;         beep(BEEP_TICKS);
-			; SOURCE LINE # 2083
+			; SOURCE LINE # 2154
 	MOV  	R7,#028H
 	LCALL	_beep
 ;         d_20ms();
-			; SOURCE LINE # 2084
+			; SOURCE LINE # 2155
 	LCALL	d_20ms
 ;     }
-			; SOURCE LINE # 2085
+			; SOURCE LINE # 2156
 	INC  	i?4370
 	MOV  	A,i?4370
 	CLR  	C
 	SUBB 	A,#014H
-	JC   	?C0289
-?C0290:
+	JC   	?C0285
+?C0286:
 ;     show_state();
-			; SOURCE LINE # 2086
+			; SOURCE LINE # 2157
 	LJMP 	show_state
 ; END OF rec_fullstop
 
@@ -5051,29 +5124,29 @@ rec_fullstop:
 	RSEG  ?PR?rec_sample?MAIN
 rec_sample:
 	USING	0
-			; SOURCE LINE # 2095
+			; SOURCE LINE # 2166
 ; {
-			; SOURCE LINE # 2096
+			; SOURCE LINE # 2167
 ;     unsigned int now, delta, nd;
 ;     unsigned char pk;
 ; 
 ;     if (recfull) {                          /* 已满 -> 不再采，去收尾 */
-			; SOURCE LINE # 2100
-	JNB  	recfull,?C0293
+			; SOURCE LINE # 2171
+	JNB  	recfull,?C0289
 ;         rec_fullstop();
-			; SOURCE LINE # 2101
+			; SOURCE LINE # 2172
 	LJMP 	rec_fullstop
 ;         return;
 ;     }
-			; SOURCE LINE # 2103
-?C0293:
+			; SOURCE LINE # 2174
+?C0289:
 ; 
 ;     now = ms10_get();
-			; SOURCE LINE # 2105
+			; SOURCE LINE # 2176
 	LCALL	ms10_get
 ;---- Variable 'now?4471' assigned to Register 'R6/R7' ----
 ;     delta = (unsigned int)(now - samp);
-			; SOURCE LINE # 2106
+			; SOURCE LINE # 2177
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,samp+01H
@@ -5083,18 +5156,18 @@ rec_sample:
 	MOV  	R4,A
 ;---- Variable 'delta?4472' assigned to Register 'R4/R5' ----
 ;     if (delta == 0)
-			; SOURCE LINE # 2107
+			; SOURCE LINE # 2178
 	ORL  	A,R5
-	JZ   	?C0294
-?C0295:
+	JZ   	?C0290
+?C0291:
 ;         return;                             /* 还不到一个 10ms */
 ;     samp = now;                             /* 基准推进到"现在" */
-			; SOURCE LINE # 2109
+			; SOURCE LINE # 2180
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
 ; 
 ;     pk = (unsigned char)(((cur_act << 4) & ACTPK_MASK) | (gear & GEAR_MASK));
-			; SOURCE LINE # 2111
+			; SOURCE LINE # 2182
 	MOV  	A,cur_act
 	SWAP 	A
 	ANL  	A,#0F0H
@@ -5106,10 +5179,10 @@ rec_sample:
 	MOV  	R1,A
 ; 
 ;     if (pk == pack) {
-			; SOURCE LINE # 2113
-	CJNE 	A,pack,?C0296
+			; SOURCE LINE # 2184
+	CJNE 	A,pack,?C0292
 ;         nd = (unsigned int)(cur_dur + delta);
-			; SOURCE LINE # 2114
+			; SOURCE LINE # 2185
 	MOV  	A,cur_dur+01H
 	ADD  	A,R5
 	MOV  	R7,A
@@ -5118,52 +5191,52 @@ rec_sample:
 	MOV  	R6,A
 ;---- Variable 'nd?4473' assigned to Register 'R6/R7' ----
 ;         if (nd < cur_dur) {                 /* 16 位溢出 -> 拆条 */
-			; SOURCE LINE # 2115
+			; SOURCE LINE # 2186
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,cur_dur+01H
 	MOV  	A,R6
 	SUBB 	A,cur_dur
-	JNC  	?C0297
+	JNC  	?C0293
 ;             rec_commit();
-			; SOURCE LINE # 2116
-	SJMP 	?C0401
+			; SOURCE LINE # 2187
+	SJMP 	?C0416
 ;             return;
 ;         }
-			; SOURCE LINE # 2118
-?C0297:
+			; SOURCE LINE # 2189
+?C0293:
 ;         cur_dur = nd;
-			; SOURCE LINE # 2119
+			; SOURCE LINE # 2190
 	MOV  	cur_dur,R6
 	MOV  	cur_dur+01H,R7
 ;         if ((cur_dur >> 8) >= RECCAP_H)     /* 到单条上限 -> 拆条 */
-			; SOURCE LINE # 2120
+			; SOURCE LINE # 2191
 	MOV  	A,cur_dur
 	CLR  	C
 	SUBB 	A,#0BH
 	CLR  	A
 	SUBB 	A,#00H
-	JC   	?C0294
+	JC   	?C0290
 ;             rec_commit();
-			; SOURCE LINE # 2121
-?C0401:
+			; SOURCE LINE # 2192
+?C0416:
 	LJMP 	rec_commit
 ;         return;
 ;     }
-			; SOURCE LINE # 2123
-?C0296:
+			; SOURCE LINE # 2194
+?C0292:
 ; 
 ;     /* 动作/档位变了：提交上一条，再开新的一条 */
 ;     if (rec_commit())
-			; SOURCE LINE # 2126
+			; SOURCE LINE # 2197
 	LCALL	rec_commit
-	JNC  	?C0294
+	JNC  	?C0290
 ;         pack = pk;
-			; SOURCE LINE # 2127
+			; SOURCE LINE # 2198
 	MOV  	pack,R1
 ; }
-			; SOURCE LINE # 2128
-?C0294:
+			; SOURCE LINE # 2199
+?C0290:
 	RET  	
 ; END OF rec_sample
 
@@ -5174,41 +5247,41 @@ rec_sample:
 	RSEG  ?PR?rec_enter?MAIN
 rec_enter:
 	USING	0
-			; SOURCE LINE # 2131
+			; SOURCE LINE # 2202
 ; {
-			; SOURCE LINE # 2132
+			; SOURCE LINE # 2203
 ;     rec_halt();                             /* 录制从静止开始 */
-			; SOURCE LINE # 2133
+			; SOURCE LINE # 2204
 	LCALL	rec_halt
 ;     recn = 0;                               /* 清空上一段未保存记录 */
-			; SOURCE LINE # 2134
+			; SOURCE LINE # 2205
 	CLR  	A
 	MOV  	recn,A
 ;     recfull = 0;
-			; SOURCE LINE # 2135
+			; SOURCE LINE # 2206
 	CLR  	recfull
 ;     cur_dur = 0;
-			; SOURCE LINE # 2136
+			; SOURCE LINE # 2207
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     samp = ms10_get();                      /* 采样基准 = 现在 */
-			; SOURCE LINE # 2137
+			; SOURCE LINE # 2208
 	LCALL	ms10_get
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
 ;     pack = (unsigned char)(gear & GEAR_MASK);   /* pack = (STOP << 4) | 当前档位 */
-			; SOURCE LINE # 2138
+			; SOURCE LINE # 2209
 	MOV  	A,gear
 	ANL  	A,#0FH
 	MOV  	pack,A
 ;     recon = 1;
-			; SOURCE LINE # 2139
+			; SOURCE LINE # 2210
 	SETB 	recon
 ;     show_state();                           /* recon = 1 -> 显示 'r' */
-			; SOURCE LINE # 2140
+			; SOURCE LINE # 2211
 	LCALL	show_state
 ;     beep(BEEP_TICKS);
-			; SOURCE LINE # 2141
+			; SOURCE LINE # 2212
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF rec_enter
@@ -5221,38 +5294,38 @@ rec_enter:
 	RSEG  ?PR?rec_exit?MAIN
 rec_exit:
 	USING	0
-			; SOURCE LINE # 2145
+			; SOURCE LINE # 2216
 ; {
-			; SOURCE LINE # 2146
+			; SOURCE LINE # 2217
 ;     if (cur_dur != 0)
-			; SOURCE LINE # 2147
+			; SOURCE LINE # 2218
 	MOV  	A,cur_dur+01H
 	ORL  	A,cur_dur
-	JZ   	?C0301
+	JZ   	?C0297
 ;         rec_commit();                       /* 最后一段还有内容就封存 */
-			; SOURCE LINE # 2148
+			; SOURCE LINE # 2219
 	LCALL	rec_commit
-?C0301:
+?C0297:
 ;     recon = 0;
-			; SOURCE LINE # 2149
+			; SOURCE LINE # 2220
 	CLR  	recon
 ;     cur_dur = 0;
-			; SOURCE LINE # 2150
+			; SOURCE LINE # 2221
 	CLR  	A
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     show_state();                           /* recon 已清 -> 显示档位 */
-			; SOURCE LINE # 2151
+			; SOURCE LINE # 2222
 	LCALL	show_state
 ;     beep(BEEP_TICKS);                       /* 退出响两声（与进入的一声区分）*/
-			; SOURCE LINE # 2152
+			; SOURCE LINE # 2223
 	MOV  	R7,#028H
 	LCALL	_beep
 ;     d_20ms();
-			; SOURCE LINE # 2153
+			; SOURCE LINE # 2224
 	LCALL	d_20ms
 ;     beep(BEEP_TICKS);
-			; SOURCE LINE # 2154
+			; SOURCE LINE # 2225
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF rec_exit
@@ -5265,20 +5338,20 @@ rec_exit:
 	RSEG  ?PR?rec_key?MAIN
 rec_key:
 	USING	0
-			; SOURCE LINE # 2158
+			; SOURCE LINE # 2229
 ; {
-			; SOURCE LINE # 2159
+			; SOURCE LINE # 2230
 ;     if (recon) rec_exit();
-			; SOURCE LINE # 2160
-	JNB  	recon,?C0303
+			; SOURCE LINE # 2231
+	JNB  	recon,?C0299
 	LJMP 	rec_exit
-?C0303:
+?C0299:
 ;     else       rec_enter();
-			; SOURCE LINE # 2161
+			; SOURCE LINE # 2232
 	LCALL	rec_enter
 ; }
-			; SOURCE LINE # 2162
-?C0305:
+			; SOURCE LINE # 2233
+?C0301:
 	RET  	
 ; END OF rec_key
 
@@ -5290,54 +5363,54 @@ rec_key:
 	RSEG  ?PR?clr_key?MAIN
 clr_key:
 	USING	0
-			; SOURCE LINE # 2166
+			; SOURCE LINE # 2237
 ; {
-			; SOURCE LINE # 2167
+			; SOURCE LINE # 2238
 ;     if (mode == MODE_PLAY)
-			; SOURCE LINE # 2168
+			; SOURCE LINE # 2239
 	MOV  	A,mode
 	XRL  	A,#03H
-	JZ   	?C0307
-?C0306:
+	JZ   	?C0303
+?C0302:
 ;         return;                             /* 回放中 -> 忽略（先退出回放再清）*/
 ;     if (cur_act != ACT_STOP)
-			; SOURCE LINE # 2170
+			; SOURCE LINE # 2241
 	MOV  	A,cur_act
-	JNZ  	?C0307
-?C0308:
+	JNZ  	?C0303
+?C0304:
 ;         return;                             /* 车在动 -> 忽略（防误清）*/
 ; 
 ;     recon = 0;
-			; SOURCE LINE # 2173
+			; SOURCE LINE # 2244
 	CLR  	recon
 ;     recn = 0;
-			; SOURCE LINE # 2174
+			; SOURCE LINE # 2245
 	CLR  	A
 	MOV  	recn,A
 ;     recfull = 0;
-			; SOURCE LINE # 2175
+			; SOURCE LINE # 2246
 	CLR  	recfull
 ;     cur_dur = 0;
-			; SOURCE LINE # 2176
+			; SOURCE LINE # 2247
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     show_state();
-			; SOURCE LINE # 2177
+			; SOURCE LINE # 2248
 	LCALL	show_state
 ;     beep(BEEP_TICKS);                       /* 清空响两声（与进入录制的一声区分）*/
-			; SOURCE LINE # 2178
+			; SOURCE LINE # 2249
 	MOV  	R7,#028H
 	LCALL	_beep
 ;     d_20ms();
-			; SOURCE LINE # 2179
+			; SOURCE LINE # 2250
 	LCALL	d_20ms
 ;     beep(BEEP_TICKS);
-			; SOURCE LINE # 2180
+			; SOURCE LINE # 2251
 	MOV  	R7,#028H
 	LCALL	_beep
 ; }
-			; SOURCE LINE # 2181
-?C0307:
+			; SOURCE LINE # 2252
+?C0303:
 	RET  	
 ; END OF clr_key
 
@@ -5358,11 +5431,11 @@ clr_key:
 	RSEG  ?PR?play_load?MAIN
 play_load:
 	USING	0
-			; SOURCE LINE # 2194
+			; SOURCE LINE # 2265
 ; {
-			; SOURCE LINE # 2195
+			; SOURCE LINE # 2266
 ;     unsigned int addr = REC_ADDR(playidx);
-			; SOURCE LINE # 2196
+			; SOURCE LINE # 2267
 	MOV  	A,playidx
 	MOV  	R5,A
 	MOV  	R4,#00H
@@ -5380,7 +5453,7 @@ play_load:
 	MOV  	R5,AR7
 	MOV  	R4,A
 ;     unsigned char pk = XBYTE[REC_BASE + addr];
-			; SOURCE LINE # 2197
+			; SOURCE LINE # 2268
 	MOV  	DPL,R5
 	MOV  	DPH,A
 	MOVX 	A,@DPTR
@@ -5389,7 +5462,7 @@ play_load:
 ; 
 ;     play_dur = (unsigned int)XBYTE[REC_BASE + addr + 1]
 ;              | ((unsigned int)XBYTE[REC_BASE + addr + 2] << 8);
-			; SOURCE LINE # 2200
+			; SOURCE LINE # 2271
 	INC  	DPTR
 	INC  	DPTR
 	MOVX 	A,@DPTR
@@ -5405,29 +5478,29 @@ play_load:
 	MOV  	play_dur+01H,A
 ; 
 ;     gear    = pk & GEAR_MASK;               /* 恢复记录里的档位 */
-			; SOURCE LINE # 2202
+			; SOURCE LINE # 2273
 	MOV  	A,R3
 	ANL  	A,#0FH
 	MOV  	gear,A
 ;     cur_act = (unsigned char)((pk >> 4) & 0x0F);
-			; SOURCE LINE # 2203
+			; SOURCE LINE # 2274
 	MOV  	A,R3
 	SWAP 	A
 	ANL  	A,#0FH
 	MOV  	cur_act,A
 ; 
 ;     motor_set(cur_act, gear);
-			; SOURCE LINE # 2205
+			; SOURCE LINE # 2276
 	MOV  	R5,gear
 	MOV  	R7,A
-	LCALL	_motor_set
+	LCALL	_motor_set_core
 ;     play_t0 = ms10_get();                   /* 本条的起始时刻 */
-			; SOURCE LINE # 2206
+			; SOURCE LINE # 2277
 	LCALL	ms10_get
 	MOV  	play_t0,R6
 	MOV  	play_t0+01H,R7
 ; }
-			; SOURCE LINE # 2207
+			; SOURCE LINE # 2278
 	RET  	
 ; END OF play_load
 
@@ -5442,26 +5515,26 @@ play_load:
 	RSEG  ?PR?play_safety?MAIN
 play_safety:
 	USING	0
-			; SOURCE LINE # 2214
+			; SOURCE LINE # 2285
 ; {
-			; SOURCE LINE # 2215
+			; SOURCE LINE # 2286
 ;     unsigned int now;
 ; 
 ;     if (ir_det())
-			; SOURCE LINE # 2218
+			; SOURCE LINE # 2289
 	LCALL	ir_det
-	JNC  	?C0310
+	JNC  	?C0306
 ;         return 1;                           /* 车头红外"贴上了" -> 立刻危险 */
-			; SOURCE LINE # 2219
+			; SOURCE LINE # 2290
 	RET  	
-?C0310:
+?C0306:
 ; 
 ;     now = ms10_get();
-			; SOURCE LINE # 2221
+			; SOURCE LINE # 2292
 	LCALL	ms10_get
 ;---- Variable 'now?5077' assigned to Register 'R6/R7' ----
 ;     if ((unsigned int)(now - samp) < PSF_GAP)
-			; SOURCE LINE # 2222
+			; SOURCE LINE # 2293
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,samp+01H
@@ -5474,34 +5547,34 @@ play_safety:
 	SUBB 	A,#06H
 	MOV  	A,R4
 	SUBB 	A,#00H
-	JNC  	?C0312
+	JNC  	?C0308
 ;         return 0;                           /* 还没到 60ms -> 这次不测（留给红外兜底）*/
-			; SOURCE LINE # 2223
+			; SOURCE LINE # 2294
 	CLR  	C
 	RET  	
-?C0312:
+?C0308:
 ;     samp = now;
-			; SOURCE LINE # 2224
+			; SOURCE LINE # 2295
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
 ; 
 ;     if (us_read() < US_STOP)                /* < 5cm -> 太近 */
-			; SOURCE LINE # 2226
+			; SOURCE LINE # 2297
 	LCALL	us_read
 	MOV  	A,R7
 	CLR  	C
 	SUBB 	A,#03H
-	JNC  	?C0313
+	JNC  	?C0309
 ;         return 1;
-			; SOURCE LINE # 2227
+			; SOURCE LINE # 2298
 	RET  	
-?C0313:
+?C0309:
 ;     return 0;
-			; SOURCE LINE # 2228
+			; SOURCE LINE # 2299
 	CLR  	C
 ; }
-			; SOURCE LINE # 2229
-?C0311:
+			; SOURCE LINE # 2300
+?C0307:
 	RET  	
 ; END OF play_safety
 
@@ -5512,30 +5585,30 @@ play_safety:
 	RSEG  ?PR?play_exit?MAIN
 play_exit:
 	USING	0
-			; SOURCE LINE # 2232
+			; SOURCE LINE # 2303
 ; {
-			; SOURCE LINE # 2233
+			; SOURCE LINE # 2304
 ;     rec_halt();
-			; SOURCE LINE # 2234
+			; SOURCE LINE # 2305
 	LCALL	rec_halt
 ;     mode = MODE_MANUAL;
-			; SOURCE LINE # 2235
+			; SOURCE LINE # 2306
 	CLR  	A
 	MOV  	mode,A
 ;     gear = play_gear0;
-			; SOURCE LINE # 2236
+			; SOURCE LINE # 2307
 	MOV  	gear,play_gear0
 ;     avst = AV_FREE;
-			; SOURCE LINE # 2237
+			; SOURCE LINE # 2308
 	MOV  	avst,A
 ;     lastcmd = LASTCMD_NONE;                 /* 允许同一个键再按一次 */
-			; SOURCE LINE # 2238
+			; SOURCE LINE # 2309
 	MOV  	lastcmd,#0FFH
 ;     playidx = 0;
-			; SOURCE LINE # 2239
+			; SOURCE LINE # 2310
 	MOV  	playidx,A
 ;     show_state();
-			; SOURCE LINE # 2240
+			; SOURCE LINE # 2311
 	LJMP 	show_state
 ; END OF play_exit
 
@@ -5548,26 +5621,26 @@ play_exit:
 	RSEG  ?PR?play_abort?MAIN
 play_abort:
 	USING	0
-			; SOURCE LINE # 2245
+			; SOURCE LINE # 2316
 ; {
-			; SOURCE LINE # 2246
+			; SOURCE LINE # 2317
 ;     playerr = 1;
-			; SOURCE LINE # 2247
+			; SOURCE LINE # 2318
 	SETB 	playerr
 ;     rec_halt();
-			; SOURCE LINE # 2248
+			; SOURCE LINE # 2319
 	LCALL	rec_halt
 ;     beep(BEEP_KEY);                         /* 两声短响（与"正常播完"区分）*/
-			; SOURCE LINE # 2249
+			; SOURCE LINE # 2320
 ;     d_20ms();
-			; SOURCE LINE # 2250
-	LCALL	L?0406
+			; SOURCE LINE # 2321
+	LCALL	L?0421
 ;     beep(BEEP_KEY);
-			; SOURCE LINE # 2251
+			; SOURCE LINE # 2322
 	MOV  	R7,#018H
 	LCALL	_beep
 ;     play_exit();
-			; SOURCE LINE # 2252
+			; SOURCE LINE # 2323
 	LJMP 	play_exit
 ; END OF play_abort
 
@@ -5579,55 +5652,55 @@ play_abort:
 	RSEG  ?PR?play_enter?MAIN
 play_enter:
 	USING	0
-			; SOURCE LINE # 2256
+			; SOURCE LINE # 2327
 ; {
-			; SOURCE LINE # 2257
+			; SOURCE LINE # 2328
 ;     if (recn == 0) {                        /* 空记录 -> 拒绝（闪 'E' + 两声，不进回放）*/
-			; SOURCE LINE # 2258
+			; SOURCE LINE # 2329
 	MOV  	A,recn
-	JNZ  	?C0316
+	JNZ  	?C0312
 ;         rec_err();
-			; SOURCE LINE # 2259
+			; SOURCE LINE # 2330
 	LJMP 	rec_err
 ;         return;
 ;     }
-			; SOURCE LINE # 2261
-?C0316:
+			; SOURCE LINE # 2332
+?C0312:
 ; 
 ;     play_gear0 = gear;                      /* 记下进入前的档位（退出时恢复）*/
-			; SOURCE LINE # 2263
+			; SOURCE LINE # 2334
 	MOV  	play_gear0,gear
 ;     /* 进回放要显式放行：回放不走避障判断，但驱动电机的地方会看避障状态，
 ;      * 如果它停在转向避让上，回放的每个动作都会被改成原地右转。 */
 ;     avst = AV_FREE;
-			; SOURCE LINE # 2266
+			; SOURCE LINE # 2337
 	CLR  	A
 	MOV  	avst,A
 ;     playidx = 0;
-			; SOURCE LINE # 2267
+			; SOURCE LINE # 2338
 	MOV  	playidx,A
 ;     cur_act = ACT_STOP;
-			; SOURCE LINE # 2268
+			; SOURCE LINE # 2339
 	MOV  	cur_act,A
 ;     mode = MODE_PLAY;
-			; SOURCE LINE # 2269
+			; SOURCE LINE # 2340
 	MOV  	mode,#03H
 ;     lastcmd = LASTCMD_NONE;
-			; SOURCE LINE # 2270
+			; SOURCE LINE # 2341
 	MOV  	lastcmd,#0FFH
 ;     play_load();                            /* 装载第 0 条 */
-			; SOURCE LINE # 2271
+			; SOURCE LINE # 2342
 	LCALL	play_load
 ;     show_mode();                            /* 显示 'P' */
-			; SOURCE LINE # 2272
+			; SOURCE LINE # 2343
 	LCALL	show_mode
 ;     beep(BEEP_TICKS);
-			; SOURCE LINE # 2273
+			; SOURCE LINE # 2344
 	MOV  	R7,#028H
 	LCALL	_beep
 ; }
-			; SOURCE LINE # 2274
-?C0317:
+			; SOURCE LINE # 2345
+?C0313:
 	RET  	
 ; END OF play_enter
 
@@ -5641,64 +5714,64 @@ play_enter:
 	RSEG  ?PR?play_step?MAIN
 play_step:
 	USING	0
-			; SOURCE LINE # 2280
+			; SOURCE LINE # 2351
 ; {
-			; SOURCE LINE # 2281
+			; SOURCE LINE # 2352
 ;     unsigned int elapsed;
 ; 
 ;     if (play_safety()) {
-			; SOURCE LINE # 2284
+			; SOURCE LINE # 2355
 	LCALL	play_safety
-	JNC  	?C0318
+	JNC  	?C0314
 ;         play_abort();                       /* 危险 -> 停车终止（不绕行）*/
-			; SOURCE LINE # 2285
+			; SOURCE LINE # 2356
 	LJMP 	play_abort
 ;         return;
 ;     }
-			; SOURCE LINE # 2287
-?C0318:
+			; SOURCE LINE # 2358
+?C0314:
 ; 
 ;     ir_recv_nb();
-			; SOURCE LINE # 2289
+			; SOURCE LINE # 2360
 	LCALL	ir_recv_nb
 ;     if (irstat == 0) {
-			; SOURCE LINE # 2290
+			; SOURCE LINE # 2361
 	MOV  	A,irstat
-	JNZ  	?C0320
+	JNZ  	?C0316
 ;         if (ir_ib2 == KEY_PLAY) {           /* 再按回放键 = 退出 */
-			; SOURCE LINE # 2291
+			; SOURCE LINE # 2362
 	MOV  	A,ir_ib2
-	CJNE 	A,#052H,?C0321
+	CJNE 	A,#052H,?C0317
 ;             play_exit();
-			; SOURCE LINE # 2292
-	SJMP 	?C0403
+			; SOURCE LINE # 2363
+	SJMP 	?C0418
 ;             return;
 ;         }
-			; SOURCE LINE # 2294
-?C0321:
+			; SOURCE LINE # 2365
+?C0317:
 ;         /* 停止键和任意方向键都算人工结束回放。
 ;          * 这里只退出并停车，不顺便执行按下的那个方向。 */
 ;         if (key2act(ir_ib2) != ACT_NONE) {
-			; SOURCE LINE # 2297
+			; SOURCE LINE # 2368
 	MOV  	R7,ir_ib2
 	LCALL	_key2act
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0320
+	JZ   	?C0316
 ;             play_exit();
-			; SOURCE LINE # 2298
-?C0402:
-	SJMP 	?C0403
+			; SOURCE LINE # 2369
+?C0417:
+	SJMP 	?C0418
 ;             return;
 ;         }
-			; SOURCE LINE # 2300
+			; SOURCE LINE # 2371
 ;     }
-			; SOURCE LINE # 2301
-?C0320:
+			; SOURCE LINE # 2372
+?C0316:
 ; 
 ;     /* ---- 本条到点了吗 ---- */
 ;     elapsed = (unsigned int)(ms10_get() - play_t0);
-			; SOURCE LINE # 2304
+			; SOURCE LINE # 2375
 	LCALL	ms10_get
 	CLR  	C
 	MOV  	A,R7
@@ -5709,39 +5782,39 @@ play_step:
 	MOV  	R6,A
 ;---- Variable 'elapsed?5478' assigned to Register 'R6/R7' ----
 ;     if (elapsed < play_dur)
-			; SOURCE LINE # 2305
+			; SOURCE LINE # 2376
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,play_dur+01H
 	MOV  	A,R6
 	SUBB 	A,play_dur
-	JC   	?C0319
-?C0323:
+	JC   	?C0315
+?C0319:
 ;         return;
 ; 
 ;     playidx++;
-			; SOURCE LINE # 2308
+			; SOURCE LINE # 2379
 	INC  	playidx
 ;     if (playidx >= recn) {                  /* 先判后读，绝不越界 */
-			; SOURCE LINE # 2309
+			; SOURCE LINE # 2380
 	MOV  	A,playidx
 	CLR  	C
 	SUBB 	A,recn
-	JC   	?C0324
+	JC   	?C0320
 ;         play_exit();                        /* 播完 -> 正常结束 */
-			; SOURCE LINE # 2310
-?C0403:
+			; SOURCE LINE # 2381
+?C0418:
 	LJMP 	play_exit
 ;         return;
 ;     }
-			; SOURCE LINE # 2312
-?C0324:
+			; SOURCE LINE # 2383
+?C0320:
 ;     play_load();
-			; SOURCE LINE # 2313
+			; SOURCE LINE # 2384
 	LCALL	play_load
 ; }
-			; SOURCE LINE # 2314
-?C0319:
+			; SOURCE LINE # 2385
+?C0315:
 	RET  	
 ; END OF play_step
 
@@ -5753,34 +5826,34 @@ play_step:
 	RSEG  ?PR?play_key?MAIN
 play_key:
 	USING	0
-			; SOURCE LINE # 2318
+			; SOURCE LINE # 2389
 ; {
-			; SOURCE LINE # 2319
+			; SOURCE LINE # 2390
 ;     if (recon)
-			; SOURCE LINE # 2320
-	JNB  	recon,?C0325
+			; SOURCE LINE # 2391
+	JNB  	recon,?C0321
 ;         rec_exit();
-			; SOURCE LINE # 2321
+			; SOURCE LINE # 2392
 	LCALL	rec_exit
-	SJMP 	?C0326
-?C0325:
+	SJMP 	?C0322
+?C0321:
 ;     else if (mode == MODE_PLAY) {
-			; SOURCE LINE # 2322
+			; SOURCE LINE # 2393
 	MOV  	A,mode
-	CJNE 	A,#03H,?C0326
+	CJNE 	A,#03H,?C0322
 ;         play_exit();
-			; SOURCE LINE # 2323
+			; SOURCE LINE # 2394
 	LJMP 	play_exit
 ;         return;
 ;     }
-			; SOURCE LINE # 2325
-?C0326:
+			; SOURCE LINE # 2396
+?C0322:
 ;     play_enter();
-			; SOURCE LINE # 2326
+			; SOURCE LINE # 2397
 	LCALL	play_enter
 ; }
-			; SOURCE LINE # 2327
-?C0328:
+			; SOURCE LINE # 2398
+?C0324:
 	RET  	
 ; END OF play_key
 
@@ -5793,62 +5866,70 @@ play_key:
 	RSEG  ?PR?manual_step?MAIN
 manual_step:
 	USING	0
-			; SOURCE LINE # 2332
+			; SOURCE LINE # 2403
 ; {
-			; SOURCE LINE # 2333
+			; SOURCE LINE # 2404
 ;     ir_recv();
-			; SOURCE LINE # 2334
+			; SOURCE LINE # 2405
 	LCALL	ir_recv
 ; 
 ;     if (irstat == 0) {                      /* 完整帧 */
-			; SOURCE LINE # 2336
+			; SOURCE LINE # 2407
 	MOV  	A,irstat
-	JNZ  	?C0329
+	JNZ  	?C0325
 ;         stamp_now();
-			; SOURCE LINE # 2337
+			; SOURCE LINE # 2408
 	LCALL	stamp_now
 ;         lastcmd = ir_ib2;                   /* 记下来（诊断用；已不参与去重）*/
-			; SOURCE LINE # 2338
+			; SOURCE LINE # 2409
 	MOV  	lastcmd,ir_ib2
 ;         do_key();
-			; SOURCE LINE # 2339
+			; SOURCE LINE # 2410
 	LCALL	do_key
 ;     } else if (irstat == 3) {               /* 重复帧：只刷新"还按着"的时刻 */
-			; SOURCE LINE # 2340
-	SJMP 	?C0330
-?C0329:
+			; SOURCE LINE # 2411
+	SJMP 	?C0326
+?C0325:
 	MOV  	A,irstat
-	CJNE 	A,#03H,?C0331
+	CJNE 	A,#03H,?C0327
 ;         stamp_now();
-			; SOURCE LINE # 2341
+			; SOURCE LINE # 2412
 	LCALL	stamp_now
 ;     } else if (irstat == 2) {               /* 见到边沿但没解成 NEC */
-			; SOURCE LINE # 2342
-	SJMP 	?C0330
-?C0331:
+			; SOURCE LINE # 2413
+	SJMP 	?C0326
+?C0327:
 	MOV  	A,irstat
-	CJNE 	A,#02H,?C0330
+	CJNE 	A,#02H,?C0326
 ;         ir_errpr();
-			; SOURCE LINE # 2343
+			; SOURCE LINE # 2414
 	LCALL	ir_errpr
 ; #if DIAG_IR
 ;         diag_errshow();                     /* 诊断版：两声短响 + 轮播 lo/hi/cmd/~cmd */
+			; SOURCE LINE # 2416
+	LCALL	diag_errshow
 ; #endif
 ;     }
-			; SOURCE LINE # 2347
-?C0330:
+			; SOURCE LINE # 2418
+?C0326:
 ;     /* irstat == 1（静默）什么都不做 */
 ; 
 ; #if DIAG_IR
 ;     /* 诊断版：把解出来的键值显示在数码管上（不靠串口，因为打印会吃掉红外帧）。 */
 ;     if (irstat == 0)
+			; SOURCE LINE # 2423
+	MOV  	A,irstat
+	JNZ  	?C0330
 ;         diag_keyshow();
+			; SOURCE LINE # 2424
+	LCALL	diag_keyshow
+?C0330:
 ; #endif
 ; 
 ;     if (HOLD_MODE)
-			; SOURCE LINE # 2356
+			; SOURCE LINE # 2427
 ;         ir_holdchk();
-			; SOURCE LINE # 2357
+			; SOURCE LINE # 2428
 	LJMP 	ir_holdchk
 ; END OF manual_step
 
@@ -5864,128 +5945,128 @@ manual_step:
 	RSEG  ?PR?auto_step?MAIN
 auto_step:
 	USING	0
-			; SOURCE LINE # 2365
+			; SOURCE LINE # 2436
 ; {
-			; SOURCE LINE # 2366
+			; SOURCE LINE # 2437
 ;     unsigned char tgt;
 ; 
 ;     ir_recv();
-			; SOURCE LINE # 2369
+			; SOURCE LINE # 2440
 	LCALL	ir_recv
 ;     if (irstat != 0)
-			; SOURCE LINE # 2370
+			; SOURCE LINE # 2441
 	MOV  	A,irstat
-	JNZ  	?C0337
-?C0336:
+	JNZ  	?C0334
+?C0333:
 ;         return;                             /* 不是完整帧 -> 不管 */
 ; 
 ;     if (ir_ib2 == KEY_STOP) {               /* 停止最高优先：急停 -> 回手动 */
-			; SOURCE LINE # 2373
+			; SOURCE LINE # 2444
 	MOV  	A,ir_ib2
-	CJNE 	A,#040H,?C0338
+	CJNE 	A,#040H,?C0335
 ;         mode = MODE_MANUAL;
-			; SOURCE LINE # 2374
+			; SOURCE LINE # 2445
 	CLR  	A
 	MOV  	mode,A
 ;         cur_act = ACT_STOP;
-			; SOURCE LINE # 2375
+			; SOURCE LINE # 2446
 ;         motor_set(ACT_STOP, 0);
-			; SOURCE LINE # 2376
-	LCALL	L?0409
+			; SOURCE LINE # 2447
+	LCALL	L?0424
 ;         lastcmd = LASTCMD_NONE;
-			; SOURCE LINE # 2377
+			; SOURCE LINE # 2448
 	MOV  	lastcmd,#0FFH
 ;         show_state();
-			; SOURCE LINE # 2378
+			; SOURCE LINE # 2449
 	LCALL	show_state
 ;         beep(BEEP_TICKS);
-			; SOURCE LINE # 2379
+			; SOURCE LINE # 2450
 	MOV  	R7,#028H
 	LJMP 	_beep
 ;         return;
 ;     }
-			; SOURCE LINE # 2381
-?C0338:
+			; SOURCE LINE # 2452
+?C0335:
 ; 
 ;     tgt = key2mode(ir_ib2);                 /* 数字键 1/2/3 直接选模式（可直接按 1 退回手动）*/
-			; SOURCE LINE # 2383
+			; SOURCE LINE # 2454
 	MOV  	R7,ir_ib2
 	LCALL	_key2mode
 ;---- Variable 'tgt?5779' assigned to Register 'R7' ----
 ;     if (tgt != 0xFF) {
-			; SOURCE LINE # 2384
+			; SOURCE LINE # 2455
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0339
+	JZ   	?C0336
 ;         if (tgt != mode)
-			; SOURCE LINE # 2385
+			; SOURCE LINE # 2456
 	MOV  	A,R7
 	XRL  	A,mode
-	JZ   	?C0337
+	JZ   	?C0334
 ;             mode_goto(tgt);
-			; SOURCE LINE # 2386
+			; SOURCE LINE # 2457
 	LJMP 	_mode_goto
 ;         return;
 ;     }
-			; SOURCE LINE # 2388
-?C0339:
+			; SOURCE LINE # 2459
+?C0336:
 ; 
 ;     /* 遥控数字键 5 在这里也生效：非手动模式下同样能开关超声波避障。 */
 ;     if (ir_ib2 == KEY_AVOID) {
-			; SOURCE LINE # 2391
+			; SOURCE LINE # 2462
 	MOV  	A,ir_ib2
-	CJNE 	A,#01CH,?C0341
+	CJNE 	A,#01CH,?C0338
 ;         avoid_toggle();
-			; SOURCE LINE # 2392
+			; SOURCE LINE # 2463
 	LJMP 	avoid_toggle
 ;         return;
 ;     }
-			; SOURCE LINE # 2394
-?C0341:
+			; SOURCE LINE # 2465
+?C0338:
 ; 
 ;     if (ir_ib2 == KEY_SPD_UP) {
-			; SOURCE LINE # 2396
+			; SOURCE LINE # 2467
 	MOV  	A,ir_ib2
-	CJNE 	A,#05AH,?C0342
+	CJNE 	A,#05AH,?C0339
 ;         if (gear < MAXGEAR) {
-			; SOURCE LINE # 2397
+			; SOURCE LINE # 2468
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0337
+	JNC  	?C0334
 ;             gear++;
-			; SOURCE LINE # 2398
+			; SOURCE LINE # 2469
 	INC  	gear
 ;             ml_apply();
-			; SOURCE LINE # 2399
+			; SOURCE LINE # 2470
 ;         }
-			; SOURCE LINE # 2400
+			; SOURCE LINE # 2471
 ;     } else if (ir_ib2 == KEY_SPD_DN) {
-			; SOURCE LINE # 2401
-	SJMP 	?C0404
-?C0342:
+			; SOURCE LINE # 2472
+	SJMP 	?C0419
+?C0339:
 	MOV  	A,ir_ib2
-	CJNE 	A,#08H,?C0337
+	CJNE 	A,#08H,?C0334
 ;         if (gear > 0) {
-			; SOURCE LINE # 2402
+			; SOURCE LINE # 2473
 	MOV  	A,gear
 	SETB 	C
 	SUBB 	A,#00H
-	JC   	?C0337
+	JC   	?C0334
 ;             gear--;
-			; SOURCE LINE # 2403
+			; SOURCE LINE # 2474
 	DEC  	gear
 ;             ml_apply();
-			; SOURCE LINE # 2404
-?C0404:
+			; SOURCE LINE # 2475
+?C0419:
 	LCALL	ml_apply
 ;         }
-			; SOURCE LINE # 2405
+			; SOURCE LINE # 2476
 ;     }
-			; SOURCE LINE # 2406
+			; SOURCE LINE # 2477
 ; }
-			; SOURCE LINE # 2407
-?C0337:
+			; SOURCE LINE # 2478
+?C0334:
 	RET  	
 ; END OF auto_step
 
@@ -6000,53 +6081,53 @@ auto_step:
 	RSEG  ?PR?ml_apply?MAIN
 ml_apply:
 	USING	0
-			; SOURCE LINE # 2414
+			; SOURCE LINE # 2485
 ; {
-			; SOURCE LINE # 2415
+			; SOURCE LINE # 2486
 ;     beepwhy('G');                           /* 诊断：板载按键加减档 */
 ;     beep(BEEP_TICKS);                       /* 变档提示音 */
-			; SOURCE LINE # 2417
+			; SOURCE LINE # 2488
 	MOV  	R7,#028H
 	LCALL	_beep
 ; 
 ;     if (mode != MODE_MANUAL) {
-			; SOURCE LINE # 2419
+			; SOURCE LINE # 2490
 	MOV  	A,mode
-	JZ   	?C0347
+	JZ   	?C0344
 ;         show_mode();
-			; SOURCE LINE # 2420
+			; SOURCE LINE # 2491
 	LJMP 	show_mode
 ;         prt_gear();
 ;         return;
 ;     }
-			; SOURCE LINE # 2423
-?C0347:
+			; SOURCE LINE # 2494
+?C0344:
 ; 
 ;     if (gear == 0 || cur_act == ACT_STOP) {
-			; SOURCE LINE # 2425
+			; SOURCE LINE # 2496
 	MOV  	A,gear
-	JZ   	?C0350
+	JZ   	?C0347
 	MOV  	A,cur_act
-	JNZ  	?C0349
-?C0350:
+	JNZ  	?C0346
+?C0347:
 ;         apply_gear();                       /* 档位 0 或没有遥控动作 -> "档位即前进" */
-			; SOURCE LINE # 2426
-	LJMP 	apply_gear
+			; SOURCE LINE # 2497
+	LJMP 	apply_gear_core
 ;     } else {
-			; SOURCE LINE # 2427
-?C0349:
+			; SOURCE LINE # 2498
+?C0346:
 ;         motor_set(cur_act, gear);           /* 遥控动作正在跑 -> 只换速度，不改方向 */
-			; SOURCE LINE # 2428
+			; SOURCE LINE # 2499
 	MOV  	R5,gear
 ;         show_state();
-			; SOURCE LINE # 2429
-	LCALL	L?0410
+			; SOURCE LINE # 2500
+	LCALL	L?0427
 ;     }
-			; SOURCE LINE # 2430
+			; SOURCE LINE # 2501
 ;     prt_gear();
 ; }
-			; SOURCE LINE # 2432
-?C0348:
+			; SOURCE LINE # 2503
+?C0345:
 	RET  	
 ; END OF ml_apply
 
@@ -6062,66 +6143,248 @@ ml_apply:
 ; #define DIAGSW_TICKS  6000                  /* 诊断显示每 600ms 换一格（6000 × 99.83us）*/
 ; 
 ; static void diag_keyshow(void)
+
+	RSEG  ?PR?diag_keyshow?MAIN
+diag_keyshow:
+			; SOURCE LINE # 2515
 ; {
+			; SOURCE LINE # 2516
 ;     diag_cmd = ir_ib2;
+			; SOURCE LINE # 2517
+	MOV  	diag_cmd,ir_ib2
 ;     diag_on = 1;
+			; SOURCE LINE # 2518
+	MOV  	diag_on,#01H
 ;     diag_seq = 0;
+			; SOURCE LINE # 2519
+	CLR  	A
+	MOV  	diag_seq,A
 ; }
+			; SOURCE LINE # 2520
+	RET  	
+; END OF diag_keyshow
+
 ; 
 ; static void diag_errshow(void)
+
+	RSEG  ?PR?diag_errshow?MAIN
+diag_errshow:
+	USING	0
+			; SOURCE LINE # 2522
 ; {
+			; SOURCE LINE # 2523
 ;     beep(BEEP_KEY);
+			; SOURCE LINE # 2524
 ;     d_20ms();
+			; SOURCE LINE # 2525
+	LCALL	L?0421
 ;     d_20ms();
+			; SOURCE LINE # 2526
+	LCALL	d_20ms
 ;     d_20ms();
+			; SOURCE LINE # 2527
+	LCALL	d_20ms
 ;     d_20ms();
+			; SOURCE LINE # 2528
+	LCALL	d_20ms
 ;     beep(BEEP_KEY);
+			; SOURCE LINE # 2529
+	MOV  	R7,#018H
+	LCALL	_beep
 ;     diag_on = 2;
+			; SOURCE LINE # 2530
+	MOV  	diag_on,#02H
 ;     diag_seq = 0;
+			; SOURCE LINE # 2531
+	CLR  	A
+	MOV  	diag_seq,A
 ; }
+			; SOURCE LINE # 2532
+	RET  	
+; END OF diag_errshow
+
 ; 
 ; static void diag_dly(void)
+
+	RSEG  ?PR?diag_dly?MAIN
+L?0425:
+	USING	0
+L?0426:
+	MOV  	R7,#028H
+	LCALL	_beep
+diag_dly:
+	USING	0
+			; SOURCE LINE # 2534
 ; {
+			; SOURCE LINE # 2535
 ;     unsigned char i;
 ;     for (i = 0; i < 8; i++)
+			; SOURCE LINE # 2537
+;---- Variable 'i?6180' assigned to Register 'R4' ----
+	CLR  	A
+	MOV  	R4,A
+?C0351:
 ;         d_20ms();
+			; SOURCE LINE # 2538
+	LCALL	d_20ms
+	INC  	R4
+	CJNE 	R4,#08H,?C0351
 ; }
+			; SOURCE LINE # 2539
+?C0354:
+	RET  	
+; END OF diag_dly
+
 ; 
 ; static unsigned char diag_getval(void)
+
+	RSEG  ?PR?diag_getval?MAIN
+diag_getval:
+	USING	0
+			; SOURCE LINE # 2541
 ; {
+			; SOURCE LINE # 2542
 ;     if (diag_on != 2)
+			; SOURCE LINE # 2543
+	MOV  	A,diag_on
+	XRL  	A,#02H
+	JZ   	?C0355
 ;         return diag_cmd;
+			; SOURCE LINE # 2544
+	MOV  	R7,diag_cmd
+	RET  	
+?C0355:
 ;     switch (diag_seq & 0x06) {
+			; SOURCE LINE # 2545
+	MOV  	A,diag_seq
+	ANL  	A,#06H
+	ADD  	A,#0FEH
+	JZ   	?C0359
+	ADD  	A,#0FEH
+	JZ   	?C0360
+	ADD  	A,#04H
+	JNZ  	?C0361
 ;     case 0:  return ir_ledlo;
+			; SOURCE LINE # 2546
+?C0358:
+	MOV  	R7,ir_ledlo
+	RET  	
 ;     case 2:  return ir_ledhi;
+			; SOURCE LINE # 2547
+?C0359:
+	MOV  	R7,ir_ledhi
+	RET  	
 ;     case 4:  return ir_ib2;
+			; SOURCE LINE # 2548
+?C0360:
+	MOV  	R7,ir_ib2
+	RET  	
 ;     default: return ir_ib3;
+			; SOURCE LINE # 2549
+?C0361:
+	MOV  	R7,ir_ib3
 ;     }
+			; SOURCE LINE # 2550
 ; }
+			; SOURCE LINE # 2551
+?C0356:
+	RET  	
+; END OF diag_getval
+
 ; 
 ; static void diag_update(void)
+
+	RSEG  ?PR?diag_update?MAIN
+diag_update:
+	USING	0
+			; SOURCE LINE # 2553
 ; {
+			; SOURCE LINE # 2554
 ;     unsigned char v;
 ; 
 ;     /* 每 600ms（6000 tick × 99.83us）推进一格显示：
 ;      *   键值模式（diag_on=1）：只用到 diag_seq 的 bit0 -> 高半字节 / 低半字节交替；
 ;      *   被拒模式（diag_on=2）：用 bit1..2 -> 引导码低 / 引导码高 / 命令 / 命令取反 轮播。 */
 ;     if (diag_on == 0) {
+			; SOURCE LINE # 2560
+	MOV  	A,diag_on
+	JNZ  	?C0362
 ;         diag_t0 = tick_get();               /* 还没东西可显示：随时准备从头计时 */
+			; SOURCE LINE # 2561
+	LCALL	tick_get
+	MOV  	diag_t0,R6
+	MOV  	diag_t0+01H,R7
+	RET  	
 ;         return;
 ;     }
+			; SOURCE LINE # 2563
+?C0362:
 ;     if ((unsigned int)(tick_get() - diag_t0) >= DIAGSW_TICKS) {
+			; SOURCE LINE # 2564
+	LCALL	tick_get
+	CLR  	C
+	MOV  	A,R7
+	SUBB 	A,diag_t0+01H
+	MOV  	R7,A
+	MOV  	A,R6
+	SUBB 	A,diag_t0
+	MOV  	R6,A
+	CLR  	C
+	MOV  	A,R7
+	SUBB 	A,#070H
+	MOV  	A,R6
+	SUBB 	A,#017H
+	JC   	?C0364
 ;         diag_t0 = tick_get();
+			; SOURCE LINE # 2565
+	LCALL	tick_get
+	MOV  	diag_t0,R6
+	MOV  	diag_t0+01H,R7
 ;         diag_seq = (unsigned char)((diag_seq + 1) & 0x07);
+			; SOURCE LINE # 2566
+	MOV  	A,diag_seq
+	INC  	A
+	ANL  	A,#07H
+	MOV  	diag_seq,A
 ;     }
+			; SOURCE LINE # 2567
+?C0364:
 ; 
 ;     v = diag_getval();
+			; SOURCE LINE # 2569
+	LCALL	diag_getval
+;---- Variable 'v?6381' assigned to Register 'R7' ----
 ;     if (diag_seq & 0x01)
+			; SOURCE LINE # 2570
+	MOV  	A,diag_seq
+	JNB  	ACC.0,?C0365
 ;         v &= 0x0F;                          /* 低半字节 */
+			; SOURCE LINE # 2571
+	ANL  	AR7,#0FH
+	SJMP 	?C0366
+?C0365:
 ;     else
 ;         v = (v >> 4) & 0x0F;                /* 高半字节 */
+			; SOURCE LINE # 2573
+	MOV  	A,R7
+	SWAP 	A
+	ANL  	A,#0FH
+	MOV  	R7,A
+?C0366:
 ;     P2 = d3_mix(hex_seg[v]);
+			; SOURCE LINE # 2574
+	MOV  	A,R7
+	MOV  	DPTR,#hex_seg
+	MOVC 	A,@A+DPTR
+	MOV  	R7,A
+	LCALL	_d3_mix
+	MOV  	P2,R7
 ; }
+			; SOURCE LINE # 2575
+?C0363:
+	RET  	
+; END OF diag_update
+
 ; #endif
 ; 
 ; /*=========================================================================
@@ -6136,193 +6399,195 @@ ml_apply:
 	RSEG  ?PR?init_all?MAIN
 init_all:
 	USING	0
-			; SOURCE LINE # 2514
+			; SOURCE LINE # 2585
 ; {
-			; SOURCE LINE # 2515
+			; SOURCE LINE # 2586
 ;     /* ---- 上电先停车 + 静音（此刻中断还没开，直接写 P0 是安全的）---- */
 ;     pwm_div  = 0;
-			; SOURCE LINE # 2517
+			; SOURCE LINE # 2588
 	CLR  	A
 	MOV  	pwm_div,A
 ;     pwm_cnt  = 0;
-			; SOURCE LINE # 2518
+			; SOURCE LINE # 2589
 	MOV  	pwm_cnt,A
 ;     buz_left = 0;
-			; SOURCE LINE # 2519
+			; SOURCE LINE # 2590
 	MOV  	buz_left,A
 ;     buz_quiet = 1;
-			; SOURCE LINE # 2520
+			; SOURCE LINE # 2591
 	SETB 	buz_quiet
 ;     dirbits  = DIR_STOP;
-			; SOURCE LINE # 2521
+			; SOURCE LINE # 2592
 	MOV  	dirbits,A
 ;     duty_a   = 0;
-			; SOURCE LINE # 2522
+			; SOURCE LINE # 2593
 	MOV  	duty_a,A
 ;     duty_b   = 0;
-			; SOURCE LINE # 2523
+			; SOURCE LINE # 2594
 	MOV  	duty_b,A
 ;     gear     = 0;
-			; SOURCE LINE # 2524
+			; SOURCE LINE # 2595
 	MOV  	gear,A
 ;     klast    = 0;
-			; SOURCE LINE # 2525
+			; SOURCE LINE # 2596
 	MOV  	klast,A
 ;     cur_act  = ACT_STOP;
-			; SOURCE LINE # 2526
+			; SOURCE LINE # 2597
 	MOV  	cur_act,A
 ;     back_on  = 0;                           /* A：倒车限时状态 */
-			; SOURCE LINE # 2527
+			; SOURCE LINE # 2598
 	CLR  	back_on
 ;     back_t0  = 0;
-			; SOURCE LINE # 2528
+			; SOURCE LINE # 2599
 	MOV  	back_t0,A
 	MOV  	back_t0+01H,A
 ;     prox_t   = 0;                           /* 近距提示音计时 */
-			; SOURCE LINE # 2529
+			; SOURCE LINE # 2600
 	MOV  	prox_t,A
 	MOV  	prox_t+01H,A
 ;     prox_moving = 0;
-			; SOURCE LINE # 2530
+			; SOURCE LINE # 2601
 	CLR  	prox_moving
 ;     prox_hold = 0;                          /* 上电时不在宽限内，免得一上电就响 */
-			; SOURCE LINE # 2531
+			; SOURCE LINE # 2602
 	CLR  	prox_hold
 ;     prox_stop_t = 0;
-			; SOURCE LINE # 2532
+			; SOURCE LINE # 2603
 	MOV  	prox_stop_t,A
 	MOV  	prox_stop_t+01H,A
 ;     av_beep_n = 0;                          /* 锁存提醒音已经响了几次 */
-			; SOURCE LINE # 2533
+			; SOURCE LINE # 2604
 	MOV  	av_beep_n,A
 ;     av_clear_on = 0;                        /* 障碍"退远"计时 */
-			; SOURCE LINE # 2534
+			; SOURCE LINE # 2605
 	CLR  	av_clear_on
 ;     av_clear_t = 0;                         /* 同时也是避让的"上次分档"时刻，一并清零 */
-			; SOURCE LINE # 2535
+			; SOURCE LINE # 2606
 	MOV  	av_clear_t,A
 	MOV  	av_clear_t+01H,A
 ; 
 ;     /* ---- 时基与红外 ---- */
 ;     tick_l = 0;
-			; SOURCE LINE # 2538
+			; SOURCE LINE # 2609
 	MOV  	tick_l,A
 ;     tick_h = 0;
-			; SOURCE LINE # 2539
+			; SOURCE LINE # 2610
 	MOV  	tick_h,A
 ;     irstat = 1;
-			; SOURCE LINE # 2540
+			; SOURCE LINE # 2611
 	MOV  	irstat,#01H
 ;     lastcmd = LASTCMD_NONE;
-			; SOURCE LINE # 2541
+			; SOURCE LINE # 2612
 	MOV  	lastcmd,#0FFH
 ;     lastt = 0;
-			; SOURCE LINE # 2542
+			; SOURCE LINE # 2613
 	MOV  	lastt,A
 	MOV  	lastt+01H,A
 ;     last_err = 0;
-			; SOURCE LINE # 2543
+			; SOURCE LINE # 2614
 	MOV  	last_err,A
 	MOV  	last_err+01H,A
 ;     ir_ledlo = 0;
-			; SOURCE LINE # 2544
+			; SOURCE LINE # 2615
 	MOV  	ir_ledlo,A
 ;     ir_ledhi = 0;
-			; SOURCE LINE # 2545
+			; SOURCE LINE # 2616
 	MOV  	ir_ledhi,A
 ; 
 ;     /* ---- 模式与避障 ---- */
 ;     mode = MODE_MANUAL;
-			; SOURCE LINE # 2548
+			; SOURCE LINE # 2619
 	MOV  	mode,A
 ;     us_avoid_on = 1;                        /* 超声波避障上电默认开启（长按 S4 / 按 5 可关）*/
-			; SOURCE LINE # 2549
+			; SOURCE LINE # 2620
 	SETB 	us_avoid_on
 ;     avst = AV_FREE;                         /* 开机先放行，主循环第一趟就会刷新 */
-			; SOURCE LINE # 2550
+			; SOURCE LINE # 2621
 	MOV  	avst,A
 ;     av_beep_t = 0;
-			; SOURCE LINE # 2551
+			; SOURCE LINE # 2622
 	MOV  	av_beep_t,A
 	MOV  	av_beep_t+01H,A
-;     last_line = 0;
-			; SOURCE LINE # 2552
-	MOV  	last_line,A
-	MOV  	last_line+01H,A
 ; 
 ;     /* ---- 录制 / 回放 ---- */
 ;     recon = 0;
-			; SOURCE LINE # 2555
+			; SOURCE LINE # 2625
 	CLR  	recon
 ;     playerr = 0;
-			; SOURCE LINE # 2556
+			; SOURCE LINE # 2626
 	CLR  	playerr
 ;     recfull = 0;
-			; SOURCE LINE # 2557
+			; SOURCE LINE # 2627
 	CLR  	recfull
 ;     ms_div = 0;
-			; SOURCE LINE # 2558
+			; SOURCE LINE # 2628
 	MOV  	ms_div,A
 ;     ms10_l = 0;
-			; SOURCE LINE # 2559
+			; SOURCE LINE # 2629
 	MOV  	ms10_l,A
 ;     ms10_h = 0;
-			; SOURCE LINE # 2560
+			; SOURCE LINE # 2630
 	MOV  	ms10_h,A
 ;     pack = 0;
-			; SOURCE LINE # 2561
+			; SOURCE LINE # 2631
 	MOV  	pack,A
 ;     cur_dur = 0;
-			; SOURCE LINE # 2562
+			; SOURCE LINE # 2632
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
 ;     samp = 0;
-			; SOURCE LINE # 2563
+			; SOURCE LINE # 2633
 	MOV  	samp,A
 	MOV  	samp+01H,A
 ;     recn = 0;
-			; SOURCE LINE # 2564
+			; SOURCE LINE # 2634
 	MOV  	recn,A
 ;     playidx = 0;
-			; SOURCE LINE # 2565
+			; SOURCE LINE # 2635
 	MOV  	playidx,A
 ;     play_dur = 0;
-			; SOURCE LINE # 2566
+			; SOURCE LINE # 2636
 	MOV  	play_dur,A
 	MOV  	play_dur+01H,A
 ;     play_t0 = 0;
-			; SOURCE LINE # 2567
+			; SOURCE LINE # 2637
 	MOV  	play_t0,A
 	MOV  	play_t0+01H,A
 ;     play_gear0 = 0;
-			; SOURCE LINE # 2568
+			; SOURCE LINE # 2638
 	MOV  	play_gear0,A
 ; 
 ; #if DIAG_IR
 ;     diag_on = 0;
+			; SOURCE LINE # 2641
+	MOV  	diag_on,A
 ;     diag_seq = 0;
+			; SOURCE LINE # 2642
+	MOV  	diag_seq,A
 ;     diag_cmd = 0;
+			; SOURCE LINE # 2643
+	MOV  	diag_cmd,A
 ; #endif
 ; 
 ;     /* ---- IO 初始状态 ---- */
 ;     P0 = 0xC0;                              /* ENA/ENB 拉低 + 蜂鸣器静音 + P0.7 = 1 */
-			; SOURCE LINE # 2577
+			; SOURCE LINE # 2647
 	MOV  	P0,#0C0H
 ;     P1 = 0xFF;
-			; SOURCE LINE # 2578
+			; SOURCE LINE # 2648
 	MOV  	P1,#0FFH
 ;     P2 = d3_mix(DISP_0);                    /* 数码管 "0"（D3 由 d3_mix 给，避障开着时是亮的）*/
-			; SOURCE LINE # 2579
+			; SOURCE LINE # 2649
 	MOV  	R7,#03H
 	LCALL	_d3_mix
 	MOV  	P2,R7
 ;     P3 = 0xFF;
-			; SOURCE LINE # 2580
+			; SOURCE LINE # 2650
 	MOV  	P3,#0FFH
 ; 
 ;     /* ---- 超声波状态机（必须放在 P1 配好之后：us_init 会把触发脚拉低）---- */
 ;     us_init();
-			; SOURCE LINE # 2583
+			; SOURCE LINE # 2653
 	LCALL	us_init
 ; 
 ;     /* ---- 车头红外的极性：上电自动校准 ----
@@ -6330,81 +6595,93 @@ init_all:
 ;      * 就算检测到。这样不管模块是哪种极性都对。
 ;      * 前提是上电时车头 1~2cm 内不要有东西。 */
 ;     if (IR_AVOID)
-			; SOURCE LINE # 2589
-	JNB  	IR_AVOID,?C0352
+			; SOURCE LINE # 2659
+	JNB  	IR_AVOID,?C0367
 ;         ir_inv = 0;                         /* 上电读到高 -> 高 = 无反射 -> 检测到 = 低 */
-			; SOURCE LINE # 2590
+			; SOURCE LINE # 2660
 	CLR  	A
 	MOV  	ir_inv,A
-	SJMP 	?C0353
-?C0352:
+	SJMP 	?C0368
+?C0367:
 ;     else
 ;         ir_inv = 1;                         /* 上电读到低 -> 低 = 无反射 -> 检测到 = 高 */
-			; SOURCE LINE # 2592
+			; SOURCE LINE # 2662
 	MOV  	ir_inv,#01H
-?C0353:
+?C0368:
 ; 
 ;     /* ---- 串口 9600 8N1（T1 方式2）+ T0 方式2 做 100us 时基 ---- */
 ;     TMOD = 0x22;                            /* 高半字节 T1 方式2，低半字节 T0 方式2 */
-			; SOURCE LINE # 2595
+			; SOURCE LINE # 2665
 	MOV  	TMOD,#022H
 ;     TH1  = 0xFD;                            /* 11059200/(384*3) = 9600 */
-			; SOURCE LINE # 2596
+			; SOURCE LINE # 2666
 	MOV  	TH1,#0FDH
 ;     TL1  = 0xFD;
-			; SOURCE LINE # 2597
+			; SOURCE LINE # 2667
 	MOV  	TL1,#0FDH
 ;     SCON = 0x50;                            /* 方式1，允许接收 */
-			; SOURCE LINE # 2598
+			; SOURCE LINE # 2668
 	MOV  	SCON,#050H
 ;     PCON = 0x00;                            /* SMOD = 0 */
-			; SOURCE LINE # 2599
+			; SOURCE LINE # 2669
 	CLR  	A
 	MOV  	PCON,A
 ;     TR1  = 1;
-			; SOURCE LINE # 2600
+			; SOURCE LINE # 2670
 	SETB 	TR1
 ; 
 ;     TH0  = T0_RELOAD;
-			; SOURCE LINE # 2602
+			; SOURCE LINE # 2672
 	MOV  	TH0,#0A4H
 ;     TL0  = T0_RELOAD;
-			; SOURCE LINE # 2603
+			; SOURCE LINE # 2673
 	MOV  	TL0,#0A4H
 ;     ET0  = 1;
-			; SOURCE LINE # 2604
+			; SOURCE LINE # 2674
 	SETB 	ET0
 ;     EA   = 1;
-			; SOURCE LINE # 2605
+			; SOURCE LINE # 2675
 	SETB 	EA
 ;     TR0  = 1;
-			; SOURCE LINE # 2606
+			; SOURCE LINE # 2676
 	SETB 	TR0
 ; 
 ;     lastt = tick_get();                     /* 让松键超时从"现在"开始算 */
-			; SOURCE LINE # 2608
+			; SOURCE LINE # 2678
 	LCALL	tick_get
 	MOV  	lastt,R6
 	MOV  	lastt+01H,R7
 ;     prox_stop_t = tick_get();               /* 上电当作"刚停下"（2s 后静音）*/
-			; SOURCE LINE # 2609
+			; SOURCE LINE # 2679
 	LCALL	tick_get
 	MOV  	prox_stop_t,R6
 	MOV  	prox_stop_t+01H,R7
 ;     prt_boot();
 ;     apply_gear();                           /* 档位 0 = 停车 + 显示 "0" */
-			; SOURCE LINE # 2611
-	LJMP 	apply_gear
-; END OF init_all
-
+			; SOURCE LINE # 2681
+	LCALL	apply_gear_core
 ; 
 ; #if DIAG_IR
 ;     /* 上电响 3 声 + 显示 "8"：证明程序在跑 */
 ;     P2 = d3_mix(DISP_8);
+			; SOURCE LINE # 2685
+	MOV  	R7,#01H
+	LCALL	_d3_mix
+	MOV  	P2,R7
 ;     beep(BEEP_TICKS); diag_dly();
+			; SOURCE LINE # 2686
+	LCALL	L?0425
 ;     beep(BEEP_TICKS); diag_dly();
+			; SOURCE LINE # 2687
+	LCALL	L?0425
 ;     beep(BEEP_TICKS); diag_dly();
+			; SOURCE LINE # 2688
+	LCALL	L?0426
 ;     show_state();
+			; SOURCE LINE # 2689
+	LJMP 	show_state
+; END OF init_all
+
 ; #endif
 ; }
 ; 
@@ -6487,191 +6764,193 @@ init_all:
 	RSEG  ?PR?main?MAIN
 main:
 	USING	0
-			; SOURCE LINE # 2697
+			; SOURCE LINE # 2767
 ; {
-			; SOURCE LINE # 2698
+			; SOURCE LINE # 2768
 ;     unsigned char k;
 ; 
 ;     init_all();
-			; SOURCE LINE # 2701
+			; SOURCE LINE # 2771
 	LCALL	init_all
-?C0355:
+?C0370:
 ; 
 ;     while (1) {
-			; SOURCE LINE # 2703
+			; SOURCE LINE # 2773
 ; #if DIAG_IR
 ;         diag_update();
+			; SOURCE LINE # 2775
+	LCALL	diag_update
 ; #endif
 ;         /* ---- ① 回放中：走独立分支，不碰闸门也不碰按键扫描 ---- */
 ;         if (mode == MODE_PLAY) {
-			; SOURCE LINE # 2708
+			; SOURCE LINE # 2778
 	MOV  	A,mode
-	CJNE 	A,#03H,?C0357
+	CJNE 	A,#03H,?C0372
 ;             play_step();
-			; SOURCE LINE # 2709
+			; SOURCE LINE # 2779
 	LCALL	play_step
 ;             continue;
-			; SOURCE LINE # 2710
-	SJMP 	?C0355
+			; SOURCE LINE # 2780
+	SJMP 	?C0370
 ;         }
-			; SOURCE LINE # 2711
-?C0357:
+			; SOURCE LINE # 2781
+?C0372:
 ; 
 ;         /* ---- ② 避障闸门 ---- */
 ;         av_gate();
-			; SOURCE LINE # 2714
+			; SOURCE LINE # 2784
 	LCALL	av_gate
 ; 
 ;         /* ---- ③ 录制采样 ---- */
 ;         if (recon)
-			; SOURCE LINE # 2717
-	JNB  	recon,?C0358
+			; SOURCE LINE # 2787
+	JNB  	recon,?C0373
 ;             rec_sample();
-			; SOURCE LINE # 2718
+			; SOURCE LINE # 2788
 	LCALL	rec_sample
-?C0358:
+?C0373:
 ; 
 ;         /* ---- ④ 模式分派 ---- */
 ;         if (mode == MODE_MANUAL) {
-			; SOURCE LINE # 2721
+			; SOURCE LINE # 2791
 	MOV  	A,mode
-	JNZ  	?C0359
+	JNZ  	?C0374
 ;             manual_step();
-			; SOURCE LINE # 2722
+			; SOURCE LINE # 2792
 	LCALL	manual_step
 ;         } else {
-			; SOURCE LINE # 2723
-	SJMP 	?C0360
-?C0359:
+			; SOURCE LINE # 2793
+	SJMP 	?C0375
+?C0374:
 ;             if (mode == MODE_LIGHT)
-			; SOURCE LINE # 2724
+			; SOURCE LINE # 2794
 	MOV  	A,mode
-	CJNE 	A,#01H,?C0361
+	CJNE 	A,#01H,?C0376
 ;                 light_step();
-			; SOURCE LINE # 2725
+			; SOURCE LINE # 2795
 	LCALL	light_step
-	SJMP 	?C0362
-?C0361:
+	SJMP 	?C0377
+?C0376:
 ;             else if (mode == MODE_TRACK)
-			; SOURCE LINE # 2726
+			; SOURCE LINE # 2796
 	MOV  	A,mode
-	CJNE 	A,#02H,?C0362
+	CJNE 	A,#02H,?C0377
 ;                 track_step();
-			; SOURCE LINE # 2727
+			; SOURCE LINE # 2797
 	LCALL	track_step
-?C0362:
+?C0377:
 ;             auto_step();
-			; SOURCE LINE # 2728
+			; SOURCE LINE # 2798
 	LCALL	auto_step
 ;         }
-			; SOURCE LINE # 2729
-?C0360:
+			; SOURCE LINE # 2799
+?C0375:
 ; 
 ;         /* ---- A：倒车限时（只在手动/录制里生效，回放不受影响）---- */
 ;         back_guard();
-			; SOURCE LINE # 2732
+			; SOURCE LINE # 2802
 	LCALL	back_guard
 ; 
 ;         /* ---- 避障关闭时的超声近距提示音（"倒车雷达"）---- */
 ;         prox_beep();
-			; SOURCE LINE # 2735
+			; SOURCE LINE # 2805
 	LCALL	prox_beep
 ; 
 ;         /* ---- ⑤ 板载按键（S3 短按加档 / S4 短按减档 / 长按切模式、避障开关）---- */
 ;         k = key_scan();
-			; SOURCE LINE # 2738
+			; SOURCE LINE # 2808
 	LCALL	key_scan
-	MOV  	k?6080,R7
+	MOV  	k?6582,R7
 ; 
 ;         if (k == 3) {                       /* S3 长按 */
-			; SOURCE LINE # 2740
-	MOV  	A,k?6080
-	CJNE 	A,#03H,?C0364
+			; SOURCE LINE # 2810
+	MOV  	A,k?6582
+	CJNE 	A,#03H,?C0379
 ;             if (recon) {
-			; SOURCE LINE # 2741
-	JNB  	recon,?C0365
+			; SOURCE LINE # 2811
+	JNB  	recon,?C0380
 ;                 /* 录制中长按 S3 也不许切模式（遥控 1/2/3 那条已拦截）*/
 ;                 beep(BEEP_KEY);
-			; SOURCE LINE # 2743
+			; SOURCE LINE # 2813
 ;                 d_20ms();
-			; SOURCE LINE # 2744
-	LCALL	L?0406
+			; SOURCE LINE # 2814
+	LCALL	L?0421
 ;                 beep(BEEP_KEY);
-			; SOURCE LINE # 2745
+			; SOURCE LINE # 2815
 	MOV  	R7,#018H
 	LCALL	_beep
 ;             } else {
-			; SOURCE LINE # 2746
-	SJMP 	?C0355
-?C0365:
+			; SOURCE LINE # 2816
+	SJMP 	?C0370
+?C0380:
 ;                 mode_switch();
-			; SOURCE LINE # 2747
+			; SOURCE LINE # 2817
 	LCALL	mode_switch
 ;             }
-			; SOURCE LINE # 2748
+			; SOURCE LINE # 2818
 ;             continue;
-			; SOURCE LINE # 2749
-	SJMP 	?C0355
+			; SOURCE LINE # 2819
+	SJMP 	?C0370
 ;         }
-			; SOURCE LINE # 2750
-?C0364:
+			; SOURCE LINE # 2820
+?C0379:
 ;         if (k == 4) {                       /* S4 长按 -> 避障开关 */
-			; SOURCE LINE # 2751
-	MOV  	A,k?6080
-	CJNE 	A,#04H,?C0367
+			; SOURCE LINE # 2821
+	MOV  	A,k?6582
+	CJNE 	A,#04H,?C0382
 ;             avoid_toggle();
-			; SOURCE LINE # 2752
+			; SOURCE LINE # 2822
 	LCALL	avoid_toggle
 ;             continue;
-			; SOURCE LINE # 2753
-	SJMP 	?C0355
+			; SOURCE LINE # 2823
+	SJMP 	?C0370
 ;         }
-			; SOURCE LINE # 2754
-?C0367:
+			; SOURCE LINE # 2824
+?C0382:
 ;         if (k == 1) {                       /* S3 短按 -> 加档 */
-			; SOURCE LINE # 2755
-	MOV  	A,k?6080
-	CJNE 	A,#01H,?C0368
+			; SOURCE LINE # 2825
+	MOV  	A,k?6582
+	CJNE 	A,#01H,?C0383
 ;             if (gear >= MAXGEAR)
-			; SOURCE LINE # 2756
+			; SOURCE LINE # 2826
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0355
+	JNC  	?C0370
 ;                 continue;                   /* 已经最高档 */
-			; SOURCE LINE # 2757
-?C0369:
+			; SOURCE LINE # 2827
+?C0384:
 ;             gear++;
-			; SOURCE LINE # 2758
+			; SOURCE LINE # 2828
 	INC  	gear
 ;             ml_apply();
-			; SOURCE LINE # 2759
+			; SOURCE LINE # 2829
 	LCALL	ml_apply
 ;         } else if (k == 2) {                /* S4 短按 -> 减档 */
-			; SOURCE LINE # 2760
-	SJMP 	?C0355
-?C0368:
-	MOV  	A,k?6080
+			; SOURCE LINE # 2830
+	SJMP 	?C0370
+?C0383:
+	MOV  	A,k?6582
 	XRL  	A,#02H
-	JNZ  	?C0355
+	JNZ  	?C0370
 ;             if (gear == 0)
-			; SOURCE LINE # 2761
+			; SOURCE LINE # 2831
 	MOV  	A,gear
-	JZ   	?C0355
+	JZ   	?C0370
 ;                 continue;                   /* 已经 0 档 */
-			; SOURCE LINE # 2762
-?C0372:
+			; SOURCE LINE # 2832
+?C0387:
 ;             gear--;
-			; SOURCE LINE # 2763
+			; SOURCE LINE # 2833
 	DEC  	gear
 ;             ml_apply();
-			; SOURCE LINE # 2764
+			; SOURCE LINE # 2834
 	LCALL	ml_apply
 ;         }
-			; SOURCE LINE # 2765
+			; SOURCE LINE # 2835
 ;     }
-			; SOURCE LINE # 2766
-	LJMP 	?C0355
+			; SOURCE LINE # 2836
+	LJMP 	?C0370
 ; END OF main
 
 	END

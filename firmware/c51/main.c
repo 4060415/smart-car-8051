@@ -112,7 +112,13 @@ sbit IR_AVOID = P3^7;           /* 车头红外对管：量程只有 1~2cm（最
  *   1 个 tick = 99.83us（Timer0 方式 2，重装值 164：256-164 = 92 机器周期）
  *=========================================================================*/
 #define T0_RELOAD    164        /* Timer0 重装值 */
-#define PWM_DIV      5          /* 每 5 个 tick 走一个 PWM 步 => 500us/步 */
+#define PWM_DIV      5          /* 每 5 个 tick 走一个 PWM 步 => 500us/步。
+                                 * 2026-09-22 实测记录：试过把它改成 1（=500Hz，
+                                 * 与汇编基线一致）--中断平均负载涨 5 倍，主循环
+                                 * 拿不到 CPU，轮询式红外解码直接崩掉，遥控失灵
+                                 * （IR rej 刷屏，引导码测成 57/25 而非 5A/2D）。
+                                 * 已回退。若"低档单轮"确与 100Hz 有关，必须换一
+                                 * 种不牺牲主循环 CPU 的解法。 */
 #define PWM_STEPS    20         /* 20 步 = 10ms = 100Hz；占空比 5% 一档 */
 #define BUZ_DIV      5          /* 蜂鸣器每 5 个 tick 翻一次 = 1kHz */
 #define MAXGEAR      5          /* 档位 0（停）.. 5（100%） */
@@ -126,7 +132,7 @@ sbit IR_AVOID = P3^7;           /* 车头红外对管：量程只有 1~2cm（最
  *      想接着倒就松开再按一次后退键；
  *   ③ 倒车时超声波避障不参与，不然倒着倒着它自己原地转起来。
  * ---------------------------------------------------------------- */
-#define BACK_GEAR_MAX  2        /* 倒车最高档：2/5 ≈ 40% 占空比 */
+#define BACK_GEAR_MAX  2        /* 倒车最高档：2/5 = 55% 占空比 */
 #define BACK_TMO_TICKS 30000    /* 连续倒车最长 3.0s（30000 × 99.83us ≈ 2.995s）*/
 
 #define BEEP_TICKS   40         /* 提示音：40 个半周期 ≈ 20ms */
@@ -137,7 +143,6 @@ sbit IR_AVOID = P3^7;           /* 车头红外对管：量程只有 1~2cm（最
 /* 时基超时门限（单位 tick，换成时间见注释） */
 #define LP_TMO_TICKS   9984     /* S3/S4 长按门限 39×256 ≈ 1.0s */
 #define HOLD_TMO_TICKS 3000     /* 松键停车：11×256+184 = 3000 tick ≈ 300ms */
-#define TRK_TMO_TICKS  4864     /* 循迹脱线超时 19×256 ≈ 0.5s */
 #define ERRTMO_TICKS   2000     /* "帧被拒"诊断打印限流 ≈ 200ms */
 #define AVBEEP_TICKS   6912     /* 刹停锁存期间间歇响的间隔 27×256 ≈ 0.69s */
 #define AV_DEC_TICKS   2800     /* 避障分级：一次避让决定至少保持 2800 tick ≈ 280ms 才重判 */
@@ -184,7 +189,7 @@ sbit IR_AVOID = P3^7;           /* 车头红外对管：量程只有 1~2cm（最
 #define ACT_ARC_R     0x06      /* 弧线右转：两轮都正转，右轮（内轮）慢 */
 #define ACT_NONE      0xFF      /* key2act 用：不认识的键 */
 
-#define GEAR_DEFAULT  3         /* 挂在 0 档时按方向键 -> 自动跳到这一档（60%） */
+#define GEAR_DEFAULT  3         /* 挂在 0 档时按方向键 -> 自动跳到这一档（70%） */
 
 /* P0 低 4 位方向图案（IN1..IN4） */
 #define DIR_STOP      0x00
@@ -302,12 +307,14 @@ static const unsigned char code gear_tab[6] = {     /* 档位 0..5 的段码 */
 };
 
 static const unsigned char code duty_tab[5] = {     /* 档位 1..5 -> PWM 档 0..20 */
-    4, 8, 12, 16, 20                                 /* 20/40/60/80/100% */
+    8, 11, 14, 17, 20                                /* 40/55/70/85/100%（原 20% 的 1 挡太慢，已去掉，
+                                                      * 整条速度梯整体上移，顶档仍是 100% = 最高速）*/
 };
 
 /* 弧线转弯时内轮的占空比（外轮还是按 duty_tab 给）。
  * 内轮和外轮差别越小，转弯半径越大；内轮越小，弯越急。
- * 现在取的是外轮的 20%~25%，之前取 40% 时感觉转弯太慢，就调小了。 */
+ * 现在取的是外轮的 12%~20%（duty_tab 整体上移后比例比原先略小，
+ * 弧线弯更急一点）；之前取 40% 时感觉转弯太慢，就调小了。 */
 static const unsigned char code arc_tab[5] = { 1, 2, 2, 3, 4 };
 
 static const unsigned char code mode_tab[4] = {     /* 索引 = 模式号 */
@@ -425,7 +432,6 @@ static unsigned int av_clear_t;             /* 见上：锁存期间 = 开始退
 
 /*---- 12.5 模式与板载计时 ----*/
 static unsigned char mode;                  /* 当前模式 MODE_* */
-static unsigned int  last_line;             /* 最后一次"探头看到黑线"的时刻 */
 
 /*---- 12.6 录制 / 回放 ----*/
 static bit recon;                           /* 1 = 正在录制（叠加在手动模式上的标志） */
@@ -462,10 +468,10 @@ static void          prt_release(void);
 static void          prt_actname(void);
 static void          ir_errpr(void);
 
-static void          motor_set(unsigned char act, unsigned char g);
+static void          motor_set_core(unsigned char act, unsigned char g);
 static unsigned char d3_mix(unsigned char seg);
 static bit           avoid_off(void);
-static void          apply_gear(void);
+static void          apply_gear_core(void);
 static void          show_state(void);
 static void          show_mode(void);
 
@@ -734,7 +740,7 @@ static void prt_gear(void)
     put_char((char)('0' + gear));
     prt_str("  duty=");
     {
-        unsigned char t = gear ? duty_tab[gear - 1] : 0;      /* 0 / 4 / 8 / 12 / 16 / 20 */
+        unsigned char t = gear ? duty_tab[gear - 1] : 0;      /* 0 / 8 / 11 / 14 / 17 / 20 */
         unsigned char pct = (unsigned char)(t + t + t + t + t);  /* 乘 5 用加法代替，免得又引出库乘法 */
         if (pct >= 100) {
             put_char('1');
@@ -799,7 +805,7 @@ static void beepwhy(char c)
  *   只在这一个地方判断就行 —— 这也是有障碍时遥控照样能用
  *   （响铃、换显示、记录制）的原因，只是车最后那一步真出不去。
  *=========================================================================*/
-static void motor_set(unsigned char act, unsigned char g)
+static void motor_set_core(unsigned char act, unsigned char g)
 {
     if (g == 0) {                           /* 速度 0 -> 停（本来就没让动，闸门不用管）*/
         dirbits = DIR_STOP;
@@ -832,7 +838,7 @@ static void motor_set(unsigned char act, unsigned char g)
     if (act == ACT_BACK && g > BACK_GEAR_MAX)
         g = BACK_GEAR_MAX;
 
-    duty_a = duty_tab[g - 1];               /* 1..5 -> 20/40/60/80/100% */
+    duty_a = duty_tab[g - 1];               /* 1..5 -> 40/55/70/85/100% */
     duty_b = duty_a;                        /* 默认两轮同速 */
 
     /* ---- 弧线转弯：两个轮子都正转，只把内轮的占空比调小 ----
@@ -862,6 +868,47 @@ static void motor_set(unsigned char act, unsigned char g)
     }
 }
 
+/*-------------------------------------------------------------------------
+ * 诊断包装（只在 DEBUG_UART=1 编入）
+ *   把每次真正下发给电机的指令打出来。下面四个值就是定时器中断组装 P0
+ *   所用的全部输入，再带上 cur_act 看"当前动作码"有没有被改写过：
+ *     act = 当前动作码   dir = 方向位 IN1..IN4（P0 低 4 位）
+ *     A   = 左轮 ENA 占空比                B = 右轮 ENB 占空比
+ *   判读：A 和 B 相等 = 两轮同速；只有一个非 0、或其中一个明显偏小
+ *   （唯一能产生这种情况的正常路径是弧线 arc_tab）就是"单轮"。
+ *   只在"值有变化"时才打：避障决策保持期间每趟主循环都会调 motor_set，
+ *   不做变化过滤会直接刷屏，而打印本身是阻塞的，会反过来拖慢主循环。
+ *   普通版这一整块不存在，退化成下面那个宏。
+ *-------------------------------------------------------------------------*/
+#if DEBUG_UART
+static unsigned char ms_p_act, ms_p_dir, ms_p_a, ms_p_b;
+static bit           ms_p_seen;
+
+static void ms_dbg(void)
+{
+    if (ms_p_seen && ms_p_act == cur_act && ms_p_dir == dirbits &&
+        ms_p_a == duty_a && ms_p_b == duty_b)
+        return;
+    ms_p_seen = 1;
+    ms_p_act  = cur_act;
+    ms_p_dir  = dirbits;
+    ms_p_a    = duty_a;
+    ms_p_b    = duty_b;
+    prt_str("\r\n! MS act="); prt_hex(cur_act);
+    prt_str(" dir=");         prt_hex(dirbits);
+    prt_str(" A=");           prt_hex(duty_a);
+    prt_str(" B=");           prt_hex(duty_b);
+}
+
+static void motor_set(unsigned char act, unsigned char g)
+{
+    motor_set_core(act, g);
+    ms_dbg();
+}
+#else
+#define motor_set(act, g)       motor_set_core((act), (g))
+#endif
+
 /* d3_mix —— D3 指示灯的唯一下游
  * D3 现在表示避障开关的状态：亮 = 开着，灭 = 关着。
  * 所有写 P2 的地方都要经过这里，不然总有某一处会把 D3 写错。
@@ -890,10 +937,10 @@ static bit avoid_off(void)
 /*=========================================================================
  * 二十、apply_gear —— 把当前档位套到电机和数码管上
  *   档位 0   停车，数码管显示 0
- *   档位 1~5 前进，占空比 20/40/60/80/100%，数码管显示档位
+ *   档位 1~5 前进，占空比 40/55/70/85/100%，数码管显示档位
  *   （手动模式下档位不是 0 就前进，这是最早定下来的用法）
  *=========================================================================*/
-static void apply_gear(void)
+static void apply_gear_core(void)
 {
     if (gear == 0)
         goto stop;
@@ -920,6 +967,16 @@ stop:
     dirbits = DIR_STOP;
     P2 = d3_mix(gear_tab[gear]);
 }
+
+#if DEBUG_UART
+static void apply_gear(void)
+{
+    apply_gear_core();
+    ms_dbg();
+}
+#else
+#define apply_gear()            apply_gear_core()
+#endif
 
 /*=========================================================================
  * 二十一、显示
@@ -1051,7 +1108,6 @@ static void mode_goto(unsigned char m)
         cur_act = ACT_STOP;                 /* 进自主模式：先清掉遥控动作，交给模式动作接管 */
         if (gear == 0)
             gear = GEAR_DEFAULT;            /* 0 档进自主模式车不会动，补一个默认档 */
-        last_line = tick_get();             /* 刷新"最后看到线"的时刻（循迹脱线超时的基准）*/
         show_mode();
     }
 
@@ -1099,27 +1155,30 @@ static void light_step(void)
  *   两个探头都压线：骑在线上，直走；
  *   只有左探头压线：线在车的左下方，说明车偏到线的右边了，往左修；
  *   只有右探头压线：反过来，往右修；
- *   两个都没压线：脱线了，先直走找线，超过约 0.5 秒就停车。
+ *   两个都没压线：脱线了，**一直直走找线，不停车**。
+ *
+ *   ★ 2026-09-22 按 `D:\工程实践\巡线ok (2)\巡线ok`（同一块板子、已上机可行）
+ *     的 `line.c : Line_Task()` 对齐，三条判据与它逐条一致：
+ *       · 压线的一侧 -> 朝那一侧修（参考里 `LINE_BLACK 0` 只是名字写反了，
+ *         本板实测是"压黑线 = 高"（docs\上机验证记录.md），净行为相同）；
+ *       · 两个都压线（骑在线上）-> 直走；
+ *       · 两个都没压线 -> 直走找线。★ 原来这里是"脱线 0.5 s 停车"，
+ *         参考工程全程不会自己停车 —— 这是两边唯一的实质差别，已按参考去掉。
+ *     修正动作也一致：本工程的 DIR_LEFT=0x06 / DIR_RIGHT=0x09 与参考的
+ *     `M_LeftLarge` / `M_RightLarge` 的 IN 图案**完全相同**（两轮反向、原地转）。
  *=========================================================================*/
 static void track_step(void)
 {
     unsigned char a = 0;
     unsigned char act;
 
-    if (TRACK_L) a |= 0x02;                 /* bit1 = 左探头 */
-    if (TRACK_R) a |= 0x01;                 /* bit0 = 右探头 */
+    if (TRACK_L) a |= 0x02;                 /* bit1 = 左探头压线 */
+    if (TRACK_R) a |= 0x01;                 /* bit0 = 右探头压线 */
 
-    if (a == 0) {                           /* 脱线 */
-        if ((unsigned int)(tick_get() - last_line) >= TRK_TMO_TICKS)
-            act = ACT_STOP;                 /* 脱线超时 -> 停车 */
-        else
-            act = ACT_FORWARD;              /* 刚脱线 -> 先直走找回来 */
-    } else {
-        last_line = tick_get();             /* 至少一路压线 -> 刷新"最后看到线"的时刻 */
-        if (a == 1)      act = ACT_RIGHT;   /* 只有右探头压线 */
-        else if (a == 2) act = ACT_LEFT;    /* 只有左探头压线 */
-        else             act = ACT_FORWARD; /* 两个都压线 */
-    }
+    if (a == 1)      act = ACT_RIGHT;       /* 只有右探头压线 -> 线在车右下 -> 往右修 */
+    else if (a == 2) act = ACT_LEFT;        /* 只有左探头压线 -> 线在车左下 -> 往左修 */
+    else             act = ACT_FORWARD;     /* 两个都压 = 骑在线上；两个都不压 = 脱线，
+                                             * 都是直走（脱线靠继续前进把线找回来）*/
 
     cur_act = act;
     motor_set(act, gear);
@@ -1373,8 +1432,20 @@ static void av_gate(void)
 #endif
         /* ---- 到这里说明车头红外没有贴着 ---- */
 
-                /* ① 超声波不参与的情形 -> 没有该响的理由 */
-        if (avoid_off() || mode == MODE_TRACK)
+        /* ---- ★ 循迹模式：前方空了就自动解锁 ----
+         *   锁存本来是为"手动模式下车停住、等遥控来接管"设计的；而循迹是
+         *   无人干预的自动模式，没人会来按键。原来循迹走到这里也是直接
+         *   return，于是**车头红外只要有一瞬间误触发，就把车永久钉死**，
+         *   表现正是"循迹跑一段就自己停下、数码管还显示 t、怎么都不动"。
+         *   参考工程（`巡线ok`）在巡线期间**根本不看 P3.7**；这里取其中间
+         *   路线：贴着就刹（保住车头红外这道保命闸门），一离开就放行。 */
+        if (mode == MODE_TRACK) {
+            avst = AV_FREE;
+            return;
+        }
+
+        /* ① 超声波不参与的情形 -> 没有该响的理由 */
+        if (avoid_off())
             return;
 
         /* ② 障碍退远了：要持续一段时间才算真的让开（防止读数抖动） */
@@ -2549,7 +2620,6 @@ static void init_all(void)
     us_avoid_on = 1;                        /* 超声波避障上电默认开启（长按 S4 / 按 5 可关）*/
     avst = AV_FREE;                         /* 开机先放行，主循环第一趟就会刷新 */
     av_beep_t = 0;
-    last_line = 0;
 
     /* ---- 录制 / 回放 ---- */
     recon = 0;

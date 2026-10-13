@@ -17,6 +17,14 @@ Listings/
 # 工具运行的临时目录（pip 构建缓存等，权限还可能拒绝访问）
 tools/_tmp/
 
+# 固件构建的 scratch 目录（build_c_abs.ps1 的 $scratch = firmware/c51/_tmp）
+# 里面是中间 .hex/.asm/.LST，每轮重编即重建
+firmware/c51/_tmp/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
 # 办公文档与派生镜像
 *.pdf
 *.docx
@@ -50,6 +58,12 @@ tools/_tmp/
 
 # 构建日志与串口日志
 *.log
+
+# Keil 工程 GUI 状态（每人不同，打开工程会自动重建）
+*.uvopt
+*.uvgui.*
+*_uvopt.bak
+*_uvproj.bak
 
 # Word 临时锁文件
 ~$*
