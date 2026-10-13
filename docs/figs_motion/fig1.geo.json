@@ -1,0 +1,857 @@
+{
+    "id":  "fig1",
+    "title":  "图 1  小车运动程序流程（运动功能验证）",
+    "w":  415,
+    "h":  658,
+    "shapes":  [
+                   {
+                       "kind":  "label",
+                       "x":  207,
+                       "y":  122,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  160,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  207,
+                       "y":  176,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  214,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  207,
+                       "y":  230,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  268,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  207,
+                       "y":  284,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  322,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  207,
+                       "y":  338,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  380,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  119,
+                       "y":  578,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "是",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "label",
+                       "x":  10,
+                       "y":  569,
+                       "w":  28,
+                       "h":  12,
+                       "text":  "否",
+                       "fs":  7.5,
+                       "bold":  true,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  null,
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  25,
+                       "y":  12,
+                       "w":  185,
+                       "h":  22,
+                       "text":  "开始",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  25,
+                       "y":  44,
+                       "w":  185,
+                       "h":  28,
+                       "text":  "初始化：两路电机停转，设定速度档位",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "io",
+                       "x":  25,
+                       "y":  82,
+                       "w":  185,
+                       "h":  28,
+                       "text":  "读入一次动作指令（遥控按键 / 板载按键）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  120,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "是 前进 / 后退 吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  122,
+                       "w":  150,
+                       "h":  34,
+                       "text":  "前进：两路电机同速正转\n后退：两路电机同速反转",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  174,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "是 停止 吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  178,
+                       "w":  150,
+                       "h":  30,
+                       "text":  "两路电机同时停转\n（两路占空比 = 0）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  228,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "是 原地转圈 吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  232,
+                       "w":  150,
+                       "h":  30,
+                       "text":  "一路电机前进、一路电机后退\n（两路反向，速度相同）",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  282,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "是 拐小弯 吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  286,
+                       "w":  150,
+                       "h":  30,
+                       "text":  "一路电机速度不变，\n另一路电机中速",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  336,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "是 拐大弯 吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  340,
+                       "w":  150,
+                       "h":  30,
+                       "text":  "一路电机速度不变，\n另一路电机慢速或停止",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  232,
+                       "y":  385,
+                       "w":  150,
+                       "h":  30,
+                       "text":  "其他指令视为无效，\n两路电机停转",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dot",
+                       "x":  113,
+                       "y":  430,
+                       "w":  9,
+                       "h":  9,
+                       "text":  "",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#000000",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  25,
+                       "y":  444,
+                       "w":  185,
+                       "h":  30,
+                       "text":  "两路电机按上述状态输出 PWM，\n每步动作保持约 2 秒",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "io",
+                       "x":  25,
+                       "y":  486,
+                       "w":  185,
+                       "h":  40,
+                       "text":  "观察并记录：运动方向、\n转弯半径、能否停住",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "dec",
+                       "x":  25,
+                       "y":  540,
+                       "w":  185,
+                       "h":  38,
+                       "text":  "全部动作验证完了吗？",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "proc",
+                       "x":  25,
+                       "y":  590,
+                       "w":  185,
+                       "h":  28,
+                       "text":  "记录验证结论，两路电机停转",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "term",
+                       "x":  25,
+                       "y":  630,
+                       "w":  185,
+                       "h":  22,
+                       "text":  "结束",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "center",
+                       "fill":  "#FFFFFF",
+                       "line":  "#000000",
+                       "color":  "#000000"
+                   },
+                   {
+                       "kind":  "note",
+                       "x":  232,
+                       "y":  26,
+                       "w":  150,
+                       "h":  44,
+                       "text":  "注：指令由遥控按键或板载按键\n给出；每步动作保持约 2 秒，\n观察小车实际运动是否符合预期。",
+                       "fs":  8,
+                       "bold":  false,
+                       "align":  "left",
+                       "fill":  null,
+                       "line":  null,
+                       "color":  "#000000"
+                   }
+               ],
+    "lines":  [
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      34
+                                  ],
+                                  [
+                                      117.5,
+                                      44
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      72
+                                  ],
+                                  [
+                                      117.5,
+                                      82
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      110
+                                  ],
+                                  [
+                                      117.5,
+                                      120
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      210,
+                                      139
+                                  ],
+                                  [
+                                      232,
+                                      139
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      158
+                                  ],
+                                  [
+                                      117.5,
+                                      174
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      210,
+                                      193
+                                  ],
+                                  [
+                                      232,
+                                      193
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      212
+                                  ],
+                                  [
+                                      117.5,
+                                      228
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      210,
+                                      247
+                                  ],
+                                  [
+                                      232,
+                                      247
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      266
+                                  ],
+                                  [
+                                      117.5,
+                                      282
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      210,
+                                      301
+                                  ],
+                                  [
+                                      232,
+                                      301
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      320
+                                  ],
+                                  [
+                                      117.5,
+                                      336
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      210,
+                                      355
+                                  ],
+                                  [
+                                      232,
+                                      355
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      374
+                                  ],
+                                  [
+                                      117.5,
+                                      400
+                                  ],
+                                  [
+                                      232,
+                                      400
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      139
+                                  ],
+                                  [
+                                      397,
+                                      139
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      193
+                                  ],
+                                  [
+                                      397,
+                                      193
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      247
+                                  ],
+                                  [
+                                      397,
+                                      247
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      301
+                                  ],
+                                  [
+                                      397,
+                                      301
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      355
+                                  ],
+                                  [
+                                      397,
+                                      355
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      382,
+                                      400
+                                  ],
+                                  [
+                                      397,
+                                      400
+                                  ],
+                                  [
+                                      397,
+                                      434.5
+                                  ],
+                                  [
+                                      122,
+                                      434.5
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      439
+                                  ],
+                                  [
+                                      117.5,
+                                      444
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      474
+                                  ],
+                                  [
+                                      117.5,
+                                      486
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      526
+                                  ],
+                                  [
+                                      117.5,
+                                      540
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      578
+                                  ],
+                                  [
+                                      117.5,
+                                      590
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      117.5,
+                                      618
+                                  ],
+                                  [
+                                      117.5,
+                                      630
+                                  ]
+                              ],
+                      "dash":  false
+                  },
+                  {
+                      "pts":  [
+                                  [
+                                      25,
+                                      559
+                                  ],
+                                  [
+                                      12,
+                                      559
+                                  ],
+                                  [
+                                      12,
+                                      96
+                                  ],
+                                  [
+                                      25,
+                                      96
+                                  ]
+                              ],
+                      "dash":  false
+                  }
+              ]
+}

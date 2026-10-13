@@ -93,6 +93,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File firmware\c51\build_c_abs.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File firmware\car\build.ps1
 ```
 
+**也可以在 Keil 里按 F7**：打开 `firmware\c51\main.uvproj`，目标 `main` / `main_dbg` / `main_irdiag` / `us_scope`
+分别对应 `build_c_abs.ps1` 的 默认 / `-Debug` / `-Ir` / `-Scope`。工程自身不编译任何文件，
+只靠 Before Make 调脚本（因此不会撞 BL51 的 2048 B 上限）。
+
 烧录：STC-ISP → 型号 `STC89C52RC` → 串口 `COM7`（COM3–6 是蓝牙虚拟口，别选）→ 打开 hex → 【下载/编程】→ **然后才冷启动**。
 
 ## 改代码的铁律
