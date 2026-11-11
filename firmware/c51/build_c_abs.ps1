@@ -70,7 +70,7 @@ if ($Scope) {
     # Ultrasonic self-test: runs THIS firmware's own us_read() and shows the result
     # on the 7-segment only:
     #     E = no echo rising edge (module did not respond to the trigger)
-    #     H = echo came but is >= US_NEAR (far)
+    #     H = echo came but is >= US_RANGE (far)
     #     0-9 = the raw tick count the avoidance thresholds are compared against
     # NOTE: serial printing is deliberately NOT enabled here. prt_boot() runs
     # BEFORE the first display write and put_char() busy-waits on TI, so a UART

@@ -4,7 +4,7 @@
 ;   来源 : main.src
 ;   生成 : python tools\c51_link.py main.src
 ;
-;   作用 : 把 C51 生成的 76 个可重定位段拼成**一个绝对地址模块**，
+;   作用 : 把 C51 生成的 74 个可重定位段拼成**一个绝对地址模块**，
 ;          这样 A51（评估版无限额）就能直接汇编出最终机器码，
 ;          再由 tools\lst2hex.py 从清单出 hex ——
 ;          绕开评估版链接器 BL51 / LX51 的 2048 字节上限。
@@ -16,7 +16,7 @@
 
 ; main.SRC generated from: main.c
 ; COMPILER INVOKED BY:
-;        D:\keli\C51\BIN\C51.EXE main.c SMALL SRC DEFINE(DIAG_IR=1)
+;        D:\keli\C51\BIN\C51.EXE main.c SMALL SRC
 $NOMOD51
 	NAME	MAIN_ABS
 P0	DATA	080H
@@ -138,6 +138,9 @@ PSW	DATA	0D0H
 ?PR?ir_det?MAIN      SEGMENT CODE
 ?PR?ir_brake?MAIN    SEGMENT CODE
 ?PR?av_gate_hold?MAIN                    SEGMENT CODE
+?PR?av_mnv_start?MAIN                    SEGMENT CODE
+?PR?av_mnv_step?MAIN SEGMENT CODE
+?DT?av_mnv_step?MAIN SEGMENT DATA OVERLAYABLE
 ?PR?av_gate?MAIN     SEGMENT CODE
 ?DT?av_gate?MAIN     SEGMENT DATA OVERLAYABLE
 ?PR?avoid_toggle?MAIN                    SEGMENT CODE
@@ -174,11 +177,6 @@ PSW	DATA	0D0H
 ?PR?manual_step?MAIN SEGMENT CODE
 ?PR?auto_step?MAIN   SEGMENT CODE
 ?PR?ml_apply?MAIN    SEGMENT CODE
-?PR?diag_keyshow?MAIN                    SEGMENT CODE
-?PR?diag_errshow?MAIN                    SEGMENT CODE
-?PR?diag_dly?MAIN    SEGMENT CODE
-?PR?diag_getval?MAIN SEGMENT CODE
-?PR?diag_update?MAIN SEGMENT CODE
 ?PR?init_all?MAIN    SEGMENT CODE
 ?PR?main?MAIN        SEGMENT CODE
 ?DT?main?MAIN        SEGMENT DATA OVERLAYABLE
@@ -244,23 +242,6 @@ mode_tab:
 	DB	0E3H
 	DB	0E1H
 	DB	031H
-hex_seg:
-	DB	003H
-	DB	09FH
-	DB	025H
-	DB	00DH
-	DB	099H
-	DB	049H
-	DB	041H
-	DB	01FH
-	DB	001H
-	DB	009H
-	DB	011H
-	DB	081H
-	DB	063H
-	DB	085H
-	DB	061H
-	DB	071H
 
 ;--------------------------------------------------------------- ?PR?timer0_isr?MAIN
 	USING	1
@@ -269,32 +250,32 @@ timer0_isr:
 	PUSH 	PSW
 	USING	1
 	MOV  	PSW,#08H
-			; SOURCE LINE # 544
-			; SOURCE LINE # 549
+			; SOURCE LINE # 583
+			; SOURCE LINE # 588
 	INC  	tick_l
 	MOV  	R7,tick_l
 	MOV  	A,R7
 	JNZ  	?C0001
-			; SOURCE LINE # 550
+			; SOURCE LINE # 589
 	INC  	tick_h
 ?C0001:
-			; SOURCE LINE # 553
+			; SOURCE LINE # 592
 	INC  	pwm_div
 	MOV  	A,pwm_div
 	CLR  	C
 	SUBB 	A,#05H
 	JC   	?C0002
-			; SOURCE LINE # 554
+			; SOURCE LINE # 593
 	MOV  	pwm_div,#00H
-			; SOURCE LINE # 556
+			; SOURCE LINE # 595
 	INC  	pwm_cnt
 	MOV  	A,pwm_cnt
 	SUBB 	A,#014H
 	JC   	?C0003
-			; SOURCE LINE # 557
+			; SOURCE LINE # 596
 	MOV  	pwm_cnt,#00H
 ?C0003:
-			; SOURCE LINE # 559
+			; SOURCE LINE # 598
 	MOV  	R7,duty_a
 	MOV  	A,pwm_cnt
 	CLR  	C
@@ -305,7 +286,7 @@ timer0_isr:
 	CLR  	C
 ?C0005:
 	MOV  	ena,C
-			; SOURCE LINE # 560
+			; SOURCE LINE # 599
 	MOV  	R7,duty_b
 	MOV  	A,pwm_cnt
 	CLR  	C
@@ -316,115 +297,115 @@ timer0_isr:
 	CLR  	C
 ?C0007:
 	MOV  	enb,C
-			; SOURCE LINE # 563
+			; SOURCE LINE # 602
 	MOV  	A,buz_left
 	JZ   	?C0008
-			; SOURCE LINE # 564
+			; SOURCE LINE # 603
 	DEC  	buz_left
-			; SOURCE LINE # 565
+			; SOURCE LINE # 604
 	CPL  	buz_quiet
-			; SOURCE LINE # 566
+			; SOURCE LINE # 605
 	SJMP 	?C0009
 ?C0008:
-			; SOURCE LINE # 567
+			; SOURCE LINE # 606
 	SETB 	buz_quiet
-			; SOURCE LINE # 568
+			; SOURCE LINE # 607
 ?C0009:
-			; SOURCE LINE # 571
+			; SOURCE LINE # 610
 	MOV  	R7,#080H
-			; SOURCE LINE # 572
+			; SOURCE LINE # 611
 	MOV  	A,dirbits
 	ORL  	AR7,A
-			; SOURCE LINE # 573
+			; SOURCE LINE # 612
 	JNB  	ena,?C0010
 	ORL  	AR7,#010H
 ?C0010:
-			; SOURCE LINE # 574
+			; SOURCE LINE # 613
 	JNB  	enb,?C0011
 	ORL  	AR7,#020H
 ?C0011:
-			; SOURCE LINE # 575
+			; SOURCE LINE # 614
 	JNB  	buz_quiet,?C0012
 	ORL  	AR7,#040H
 ?C0012:
-			; SOURCE LINE # 576
+			; SOURCE LINE # 615
 	MOV  	P0,R7
-			; SOURCE LINE # 577
+			; SOURCE LINE # 616
 ?C0002:
-			; SOURCE LINE # 583
+			; SOURCE LINE # 622
 	INC  	ms_div
 	MOV  	A,ms_div
 	CLR  	C
 	SUBB 	A,#064H
 	JC   	?C0013
-			; SOURCE LINE # 584
+			; SOURCE LINE # 623
 	MOV  	ms_div,#00H
-			; SOURCE LINE # 585
+			; SOURCE LINE # 624
 	INC  	ms10_l
 	MOV  	R7,ms10_l
 	MOV  	A,R7
 	JNZ  	?C0013
-			; SOURCE LINE # 586
+			; SOURCE LINE # 625
 	INC  	ms10_h
-			; SOURCE LINE # 587
+			; SOURCE LINE # 626
 ?C0013:
-			; SOURCE LINE # 593
+			; SOURCE LINE # 632
 	MOV  	A,us_st
 	JZ   	?C0026
-			; SOURCE LINE # 594
+			; SOURCE LINE # 633
 	MOV  	A,us_st
 	CJNE 	A,#01H,?C0016
-			; SOURCE LINE # 595
+			; SOURCE LINE # 634
 	JNB  	US_ECHO,?C0017
-			; SOURCE LINE # 596
+			; SOURCE LINE # 635
 	MOV  	us_wid,#00H
-			; SOURCE LINE # 597
+			; SOURCE LINE # 636
 	MOV  	us_st,#02H
-			; SOURCE LINE # 598
+			; SOURCE LINE # 637
 	SJMP 	?C0026
 ?C0017:
 	MOV  	A,us_wait
 	CLR  	C
 	SUBB 	A,#0FAH
-	JNC  	?C0389
-			; SOURCE LINE # 599
+	JNC  	?C0398
+			; SOURCE LINE # 638
 	INC  	us_wait
-			; SOURCE LINE # 600
+			; SOURCE LINE # 639
 	SJMP 	?C0026
 ?C0016:
-			; SOURCE LINE # 609
+			; SOURCE LINE # 648
 	JNB  	US_ECHO,?C0022
-			; SOURCE LINE # 610
+			; SOURCE LINE # 649
 	MOV  	A,us_wid
 	CLR  	C
-	SUBB 	A,#0CH
+	SUBB 	A,#02DH
 	JNC  	?C0023
-			; SOURCE LINE # 611
+			; SOURCE LINE # 650
 	INC  	us_wid
-			; SOURCE LINE # 612
+			; SOURCE LINE # 651
 	SJMP 	?C0026
 ?C0023:
-			; SOURCE LINE # 613
-?C0389:
+			; SOURCE LINE # 652
+?C0398:
 	MOV  	us_st,#00H
-			; SOURCE LINE # 614
+			; SOURCE LINE # 653
 	MOV  	us_res,#0FFH
-			; SOURCE LINE # 615
+			; SOURCE LINE # 654
 	SETB 	us_got
-			; SOURCE LINE # 619
-			; SOURCE LINE # 620
+			; SOURCE LINE # 658
+			; SOURCE LINE # 659
 	SJMP 	?C0026
 ?C0022:
-			; SOURCE LINE # 621
+			; SOURCE LINE # 660
 	MOV  	us_st,#00H
-			; SOURCE LINE # 622
+			; SOURCE LINE # 661
 	MOV  	us_res,us_wid
-			; SOURCE LINE # 623
+			; SOURCE LINE # 662
 	SETB 	us_got
-			; SOURCE LINE # 627
-			; SOURCE LINE # 628
-			; SOURCE LINE # 629
-			; SOURCE LINE # 630
+			; SOURCE LINE # 666
+			; SOURCE LINE # 667
+			; SOURCE LINE # 668
+			; SOURCE LINE # 669
 ?C0026:
 	POP  	PSW
 	POP  	ACC
@@ -434,21 +415,21 @@ timer0_isr:
 ;--------------------------------------------------------------- ?PR?tick_get?MAIN
 tick_get:
 	USING	0
-			; SOURCE LINE # 637
-			; SOURCE LINE # 638
-			; SOURCE LINE # 640
+			; SOURCE LINE # 676
+			; SOURCE LINE # 677
+			; SOURCE LINE # 679
 	CLR  	ET0
-			; SOURCE LINE # 641
+			; SOURCE LINE # 680
 	MOV  	R7,tick_h
 	MOV  	A,R7
 	MOV  	R6,A
 	MOV  	R5,tick_l
 	MOV  	A,R5
 	MOV  	R7,A
-			; SOURCE LINE # 642
+			; SOURCE LINE # 681
 	SETB 	ET0
-			; SOURCE LINE # 643
-			; SOURCE LINE # 644
+			; SOURCE LINE # 682
+			; SOURCE LINE # 683
 ?C0027:
 	RET
 ; END OF tick_get
@@ -456,41 +437,41 @@ tick_get:
 ;--------------------------------------------------------------- ?PR?ms10_get?MAIN
 ms10_get:
 	USING	0
-			; SOURCE LINE # 646
-			; SOURCE LINE # 647
-			; SOURCE LINE # 649
+			; SOURCE LINE # 686
+			; SOURCE LINE # 687
+			; SOURCE LINE # 689
 	CLR  	ET0
-			; SOURCE LINE # 650
+			; SOURCE LINE # 690
 	MOV  	R7,ms10_h
 	MOV  	A,R7
 	MOV  	R6,A
 	MOV  	R5,ms10_l
 	MOV  	A,R5
 	MOV  	R7,A
-			; SOURCE LINE # 651
+			; SOURCE LINE # 691
 	SETB 	ET0
-			; SOURCE LINE # 652
-			; SOURCE LINE # 653
+			; SOURCE LINE # 692
+			; SOURCE LINE # 693
 ?C0028:
 	RET
 ; END OF ms10_get
 
 ;--------------------------------------------------------------- ?PR?d_20ms?MAIN
-L?0420:
+L?0434:
 	USING	0
-L?0421:
+L?0435:
 	MOV  	R7,#018H
 	LCALL	_beep
 d_20ms:
 	USING	0
-			; SOURCE LINE # 661
-			; SOURCE LINE # 662
-			; SOURCE LINE # 663
+			; SOURCE LINE # 701
+			; SOURCE LINE # 702
+			; SOURCE LINE # 703
 	LCALL	tick_get
 	MOV  	R3,AR7
 	MOV  	R2,AR6
 ?C0029:
-			; SOURCE LINE # 664
+			; SOURCE LINE # 704
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -506,172 +487,176 @@ d_20ms:
 	SUBB 	A,#00H
 	JC   	?C0029
 ?C0030:
-			; SOURCE LINE # 666
+			; SOURCE LINE # 706
 ?C0031:
 	RET
 ; END OF d_20ms
 
 ;--------------------------------------------------------------- ?PR?_beep?MAIN
 _beep:
-			; SOURCE LINE # 674
-			; SOURCE LINE # 675
-			; SOURCE LINE # 676
+			; SOURCE LINE # 719
+			; SOURCE LINE # 720
+			; SOURCE LINE # 721
 	MOV  	A,R7
 	JNZ  	?C0032
-			; SOURCE LINE # 677
+			; SOURCE LINE # 722
 	CLR  	ET0
-			; SOURCE LINE # 678
+			; SOURCE LINE # 723
 	MOV  	buz_left,A
-			; SOURCE LINE # 679
+			; SOURCE LINE # 724
 	SETB 	buz_quiet
-			; SOURCE LINE # 680
+			; SOURCE LINE # 725
 	SETB 	ET0
 	RET
-			; SOURCE LINE # 682
+			; SOURCE LINE # 727
 ?C0032:
-			; SOURCE LINE # 683
+			; SOURCE LINE # 728
 	CLR  	ET0
-			; SOURCE LINE # 684
+			; SOURCE LINE # 729
 	MOV  	buz_left,R7
-			; SOURCE LINE # 685
+			; SOURCE LINE # 730
 	CLR  	buz_quiet
-			; SOURCE LINE # 686
+			; SOURCE LINE # 731
 	SETB 	ET0
-			; SOURCE LINE # 687
+			; SOURCE LINE # 732
 ?C0033:
 	RET
 ; END OF _beep
 
 ;--------------------------------------------------------------- ?PR?_motor_set_core?MAIN
-L?0422:
-	USING	0
-	MOV  	avst,#02H
-L?0423:
-	CLR  	A
-L?0424:
-	MOV  	cur_act,A
-	MOV  	R5,A
-	MOV  	R7,A
 _motor_set_core:
 	USING	0
-			; SOURCE LINE # 808
-			; SOURCE LINE # 809
-			; SOURCE LINE # 810
+			; SOURCE LINE # 853
+			; SOURCE LINE # 854
+			; SOURCE LINE # 855
 	MOV  	A,R5
 	JNZ  	?C0034
-			; SOURCE LINE # 811
-			; SOURCE LINE # 812
-			; SOURCE LINE # 813
-	SJMP 	?C0391
-			; SOURCE LINE # 815
+			; SOURCE LINE # 856
+			; SOURCE LINE # 857
+			; SOURCE LINE # 858
+	SJMP 	?C0400
+			; SOURCE LINE # 860
 ?C0034:
-			; SOURCE LINE # 819
+			; SOURCE LINE # 864
 	MOV  	A,avst
 	CJNE 	A,#04H,?C0036
-			; SOURCE LINE # 820
+			; SOURCE LINE # 865
 	MOV  	R7,#06H
-			; SOURCE LINE # 821
+			; SOURCE LINE # 866
 	SJMP 	?C0037
 ?C0036:
-			; SOURCE LINE # 823
+			; SOURCE LINE # 868
 	MOV  	A,avst
 	CJNE 	A,#01H,?C0038
-			; SOURCE LINE # 824
+			; SOURCE LINE # 869
 	MOV  	R7,#04H
-			; SOURCE LINE # 825
+			; SOURCE LINE # 870
 	SJMP 	?C0037
 ?C0038:
 	MOV  	A,avst
-	CJNE 	A,#02H,?C0037
-			; SOURCE LINE # 826
+	CJNE 	A,#02H,?C0040
+			; SOURCE LINE # 871
 	CLR  	A
 	MOV  	cur_act,A
-			; SOURCE LINE # 829
-?C0390:
-			; SOURCE LINE # 830
-			; SOURCE LINE # 831
-	SJMP 	?C0391
-			; SOURCE LINE # 833
+			; SOURCE LINE # 874
+?C0399:
+			; SOURCE LINE # 875
+			; SOURCE LINE # 876
+	SJMP 	?C0400
+			; SOURCE LINE # 878
+?C0040:
+	MOV  	A,avst
+	CJNE 	A,#05H,?C0042
+			; SOURCE LINE # 880
+	MOV  	R7,#02H
+			; SOURCE LINE # 881
+	SJMP 	?C0037
+?C0042:
+	MOV  	A,avst
+	CJNE 	A,#06H,?C0037
+			; SOURCE LINE # 882
+	MOV  	R7,#04H
+			; SOURCE LINE # 883
 ?C0037:
-			; SOURCE LINE # 838
-	CJNE 	R7,#02H,?C0041
+			; SOURCE LINE # 888
+	CJNE 	R7,#02H,?C0045
 	MOV  	A,R5
 	SETB 	C
 	SUBB 	A,#02H
-	JC   	?C0041
-			; SOURCE LINE # 839
+	JC   	?C0045
+			; SOURCE LINE # 889
 	MOV  	R5,#02H
-?C0041:
-			; SOURCE LINE # 841
+?C0045:
+			; SOURCE LINE # 891
 	MOV  	A,R5
 	MOV  	DPTR,#duty_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
-			; SOURCE LINE # 842
+			; SOURCE LINE # 892
 	MOV  	duty_b,duty_a
-			; SOURCE LINE # 847
-	CJNE 	R7,#05H,?C0042
-			; SOURCE LINE # 848
+			; SOURCE LINE # 897
+	CJNE 	R7,#05H,?C0046
+			; SOURCE LINE # 898
 	MOV  	A,R5
 	MOV  	DPTR,#arc_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
-			; SOURCE LINE # 849
-	SJMP 	?C0393
-			; SOURCE LINE # 851
-?C0042:
-			; SOURCE LINE # 852
-	CJNE 	R7,#06H,?C0043
-			; SOURCE LINE # 853
+			; SOURCE LINE # 899
+	SJMP 	?C0402
+			; SOURCE LINE # 901
+?C0046:
+			; SOURCE LINE # 902
+	CJNE 	R7,#06H,?C0047
+			; SOURCE LINE # 903
 	MOV  	A,R5
 	MOV  	DPTR,#arc_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_b,A
-			; SOURCE LINE # 854
-?C0392:
-	SJMP 	?C0393
-			; SOURCE LINE # 856
-?C0043:
-			; SOURCE LINE # 858
+			; SOURCE LINE # 904
+?C0401:
+	SJMP 	?C0402
+			; SOURCE LINE # 906
+?C0047:
+			; SOURCE LINE # 908
 	MOV  	A,R7
 	ADD  	A,#0FEH
-	JZ   	?C0046
+	JZ   	?C0050
 	DEC  	A
-	JZ   	?C0047
+	JZ   	?C0051
 	DEC  	A
-	JZ   	?C0048
+	JZ   	?C0052
 	ADD  	A,#03H
-	JNZ  	?C0049
-			; SOURCE LINE # 859
-?C0045:
-?C0393:
+	JNZ  	?C0053
+			; SOURCE LINE # 909
+?C0049:
+?C0402:
 	MOV  	dirbits,#05H
 	RET
-			; SOURCE LINE # 860
-?C0046:
+			; SOURCE LINE # 910
+?C0050:
 	MOV  	dirbits,#0AH
 	RET
-			; SOURCE LINE # 861
-?C0047:
+			; SOURCE LINE # 911
+?C0051:
 	MOV  	dirbits,#06H
 	RET
-			; SOURCE LINE # 862
-?C0048:
+			; SOURCE LINE # 912
+?C0052:
 	MOV  	dirbits,#09H
 	RET
-			; SOURCE LINE # 863
-?C0049:
-			; SOURCE LINE # 864
+			; SOURCE LINE # 913
+?C0053:
+			; SOURCE LINE # 914
 	CLR  	A
-?C0391:
+?C0400:
 	MOV  	dirbits,A
-			; SOURCE LINE # 865
+			; SOURCE LINE # 915
 	MOV  	duty_a,A
-			; SOURCE LINE # 866
+			; SOURCE LINE # 916
 	MOV  	duty_b,A
-			; SOURCE LINE # 867
-			; SOURCE LINE # 868
-			; SOURCE LINE # 869
+			; SOURCE LINE # 917
+			; SOURCE LINE # 918
+			; SOURCE LINE # 919
 ?C0035:
 	RET
 ; END OF _motor_set_core
@@ -679,240 +664,211 @@ _motor_set_core:
 ;--------------------------------------------------------------- ?PR?_d3_mix?MAIN
 _d3_mix:
 	USING	0
-			; SOURCE LINE # 916
+			; SOURCE LINE # 966
 	MOV  	seg?647,R7
-			; SOURCE LINE # 917
-			; SOURCE LINE # 918
+			; SOURCE LINE # 967
+			; SOURCE LINE # 968
 	LCALL	avoid_off
 	MOV  	A,seg?647
-	JC   	?C0050
-			; SOURCE LINE # 919
+	JC   	?C0054
+			; SOURCE LINE # 969
 	ANL  	A,#0FEH
 	MOV  	R7,A
 	RET
-?C0050:
-			; SOURCE LINE # 920
+?C0054:
+			; SOURCE LINE # 970
 	ORL  	A,#01H
 	MOV  	R7,A
-			; SOURCE LINE # 921
-?C0051:
+			; SOURCE LINE # 971
+?C0055:
 	RET
 ; END OF _d3_mix
 
 ;--------------------------------------------------------------- ?PR?avoid_off?MAIN
 avoid_off:
-			; SOURCE LINE # 928
-			; SOURCE LINE # 929
-			; SOURCE LINE # 930
-	JNB  	recon,?C0052
-			; SOURCE LINE # 931
+			; SOURCE LINE # 978
+			; SOURCE LINE # 979
+			; SOURCE LINE # 980
+	JNB  	recon,?C0056
+			; SOURCE LINE # 981
 	SETB 	C
 	RET
-?C0052:
-			; SOURCE LINE # 932
-	JNB  	us_avoid_on,?C0054
-			; SOURCE LINE # 933
+?C0056:
+			; SOURCE LINE # 982
+	JNB  	us_avoid_on,?C0058
+			; SOURCE LINE # 983
 	CLR  	C
 	RET
-?C0054:
-			; SOURCE LINE # 934
+?C0058:
+			; SOURCE LINE # 984
 	SETB 	C
-			; SOURCE LINE # 935
-?C0053:
+			; SOURCE LINE # 985
+?C0057:
 	RET
 ; END OF avoid_off
 
 ;--------------------------------------------------------------- ?PR?apply_gear_core?MAIN
 apply_gear_core:
 	USING	0
-			; SOURCE LINE # 943
-			; SOURCE LINE # 944
-			; SOURCE LINE # 945
+			; SOURCE LINE # 993
+			; SOURCE LINE # 994
+			; SOURCE LINE # 997
+	JB   	av_mnv,?C0060
+?C0059:
+			; SOURCE LINE # 1000
 	MOV  	A,gear
 	JZ   	?apply_gear_core?stop
-			; SOURCE LINE # 946
-?C0055:
-			; SOURCE LINE # 949
+			; SOURCE LINE # 1001
+?C0061:
+			; SOURCE LINE # 1004
 	MOV  	A,avst
 	XRL  	A,#02H
 	JZ   	?apply_gear_core?stop
-			; SOURCE LINE # 950
-?C0057:
-			; SOURCE LINE # 954
+			; SOURCE LINE # 1005
+?C0063:
+			; SOURCE LINE # 1009
 	MOV  	cur_act,#01H
-			; SOURCE LINE # 956
+			; SOURCE LINE # 1011
 	MOV  	A,gear
 	MOV  	DPTR,#duty_tab-01H
 	MOVC 	A,@A+DPTR
 	MOV  	duty_a,A
-			; SOURCE LINE # 957
+			; SOURCE LINE # 1012
 	MOV  	duty_b,duty_a
-			; SOURCE LINE # 958
+			; SOURCE LINE # 1013
 	MOV  	dirbits,#05H
-			; SOURCE LINE # 960
-	SJMP 	?C0394
-			; SOURCE LINE # 963
+			; SOURCE LINE # 1015
+	SJMP 	?C0403
+			; SOURCE LINE # 1018
 ?apply_gear_core?stop:
-			; SOURCE LINE # 964
+			; SOURCE LINE # 1019
 	CLR  	A
 	MOV  	cur_act,A
-			; SOURCE LINE # 965
+			; SOURCE LINE # 1020
 	MOV  	duty_a,A
-			; SOURCE LINE # 966
+			; SOURCE LINE # 1021
 	MOV  	duty_b,A
-			; SOURCE LINE # 967
+			; SOURCE LINE # 1022
 	MOV  	dirbits,A
-			; SOURCE LINE # 968
-?C0394:
+			; SOURCE LINE # 1023
+?C0403:
 	MOV  	A,gear
 	MOV  	DPTR,#gear_tab
 	MOVC 	A,@A+DPTR
 	MOV  	R7,A
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 969
-?C0058:
+			; SOURCE LINE # 1024
+?C0060:
 	RET
 ; END OF apply_gear_core
 
 ;--------------------------------------------------------------- ?PR?show_state?MAIN
-L?0427:
+L?0438:
 	USING	0
 	MOV  	R7,cur_act
 	LCALL	_motor_set_core
 show_state:
 	USING	0
-			; SOURCE LINE # 986
-			; SOURCE LINE # 987
-			; SOURCE LINE # 988
-	JNB  	recon,?C0059
+			; SOURCE LINE # 1041
+			; SOURCE LINE # 1042
+			; SOURCE LINE # 1043
+	JNB  	recon,?C0064
 	MOV  	R7,#0F5H
-	SJMP 	?C0060
-?C0059:
+	SJMP 	?C0065
+?C0064:
 	MOV  	A,gear
 	MOV  	DPTR,#gear_tab
 	MOVC 	A,@A+DPTR
 	MOV  	R7,A
-?C0060:
+?C0065:
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 989
+			; SOURCE LINE # 1044
 	RET
 ; END OF show_state
 
 ;--------------------------------------------------------------- ?PR?show_mode?MAIN
+L?0436:
+	USING	0
+	MOV  	avst,#02H
+	CLR  	A
+L?0437:
+	MOV  	cur_act,A
+	MOV  	R5,A
+	MOV  	R7,A
+	LCALL	_motor_set_core
 show_mode:
 	USING	0
-			; SOURCE LINE # 992
-			; SOURCE LINE # 993
-			; SOURCE LINE # 994
+			; SOURCE LINE # 1047
+			; SOURCE LINE # 1048
+			; SOURCE LINE # 1049
 	MOV  	A,mode
-	JNZ  	?C0062
-			; SOURCE LINE # 995
+	JNZ  	?C0067
+			; SOURCE LINE # 1050
 	LJMP 	show_state
-			; SOURCE LINE # 997
-?C0062:
-			; SOURCE LINE # 999
+			; SOURCE LINE # 1052
+?C0067:
+			; SOURCE LINE # 1054
 	MOV  	A,mode
 	MOV  	DPTR,#mode_tab
 	MOVC 	A,@A+DPTR
 	MOV  	R7,A
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 1000
-?C0063:
+			; SOURCE LINE # 1055
+?C0068:
 	RET
 ; END OF show_mode
 
 ;--------------------------------------------------------------- ?PR?key_scan?MAIN
 key_scan:
 	USING	0
-			; SOURCE LINE # 1009
-			; SOURCE LINE # 1010
-			; SOURCE LINE # 1013
+			; SOURCE LINE # 1064
+			; SOURCE LINE # 1065
+			; SOURCE LINE # 1068
 	MOV  	A,klast
-	JZ   	?C0064
-			; SOURCE LINE # 1014
+	JZ   	?C0069
+			; SOURCE LINE # 1069
 	XRL  	A,#02H
-	JZ   	?C0066
+	JZ   	?C0071
 	MOV  	A,klast
-	CJNE 	A,#04H,?C0065
-?C0066:
-			; SOURCE LINE # 1015
-	JNB  	KEY_S4,?C0068
-			; SOURCE LINE # 1016
-	SJMP 	?C0395
-?C0065:
-			; SOURCE LINE # 1017
-	JNB  	KEY_S3,?C0068
-?C0395:
+	CJNE 	A,#04H,?C0070
+?C0071:
+			; SOURCE LINE # 1070
+	JNB  	KEY_S4,?C0073
+			; SOURCE LINE # 1071
+	SJMP 	?C0404
+?C0070:
+			; SOURCE LINE # 1072
+	JNB  	KEY_S3,?C0073
+?C0404:
 	CLR  	A
 	MOV  	klast,A
-			; SOURCE LINE # 1018
-?C0068:
-			; SOURCE LINE # 1019
-	MOV  	R7,#00H
-	RET
-			; SOURCE LINE # 1020
-?C0064:
-			; SOURCE LINE # 1022
-	JB   	KEY_S3,?C0071
-			; SOURCE LINE # 1023
-	LCALL	d_20ms
-			; SOURCE LINE # 1024
-	JNB  	KEY_S3,?C0072
-	MOV  	R7,#00H
-	RET
-?C0072:
-			; SOURCE LINE # 1025
-	LCALL	tick_get
-	MOV  	DPH,R6
-	MOV  	DPL,R7
+			; SOURCE LINE # 1073
 ?C0073:
-			; SOURCE LINE # 1026
-	JB   	KEY_S3,?C0074
-			; SOURCE LINE # 1027
-	LCALL	tick_get
-	CLR  	C
-	MOV  	A,R7
-	SUBB 	A,DPL
-	MOV  	A,R6
-	SUBB 	A,DPH
-	CLR  	C
-	SUBB 	A,#027H
-	JC   	?C0073
-			; SOURCE LINE # 1028
-	MOV  	klast,#03H
-			; SOURCE LINE # 1029
-	MOV  	R7,#03H
+			; SOURCE LINE # 1074
+	MOV  	R7,#00H
 	RET
-			; SOURCE LINE # 1030
-			; SOURCE LINE # 1031
-?C0074:
-			; SOURCE LINE # 1032
-	MOV  	klast,#01H
-			; SOURCE LINE # 1033
-	MOV  	R7,#01H
-	RET
-			; SOURCE LINE # 1034
-?C0071:
-			; SOURCE LINE # 1036
-	JB   	KEY_S4,?C0076
-			; SOURCE LINE # 1037
+			; SOURCE LINE # 1075
+?C0069:
+			; SOURCE LINE # 1077
+	JB   	KEY_S3,?C0076
+			; SOURCE LINE # 1078
 	LCALL	d_20ms
-			; SOURCE LINE # 1038
-	JNB  	KEY_S4,?C0077
+			; SOURCE LINE # 1079
+	JNB  	KEY_S3,?C0077
 	MOV  	R7,#00H
 	RET
 ?C0077:
-			; SOURCE LINE # 1039
+			; SOURCE LINE # 1080
 	LCALL	tick_get
 	MOV  	DPH,R6
 	MOV  	DPL,R7
 ?C0078:
-			; SOURCE LINE # 1040
-	JB   	KEY_S4,?C0079
-			; SOURCE LINE # 1041
+			; SOURCE LINE # 1081
+	JB   	KEY_S3,?C0079
+			; SOURCE LINE # 1082
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -922,192 +878,233 @@ key_scan:
 	CLR  	C
 	SUBB 	A,#027H
 	JC   	?C0078
-			; SOURCE LINE # 1042
+			; SOURCE LINE # 1083
+	MOV  	klast,#03H
+			; SOURCE LINE # 1084
+	MOV  	R7,#03H
+	RET
+			; SOURCE LINE # 1085
+			; SOURCE LINE # 1086
+?C0079:
+			; SOURCE LINE # 1087
+	MOV  	klast,#01H
+			; SOURCE LINE # 1088
+	MOV  	R7,#01H
+	RET
+			; SOURCE LINE # 1089
+?C0076:
+			; SOURCE LINE # 1091
+	JB   	KEY_S4,?C0081
+			; SOURCE LINE # 1092
+	LCALL	d_20ms
+			; SOURCE LINE # 1093
+	JNB  	KEY_S4,?C0082
+	MOV  	R7,#00H
+	RET
+?C0082:
+			; SOURCE LINE # 1094
+	LCALL	tick_get
+	MOV  	DPH,R6
+	MOV  	DPL,R7
+?C0083:
+			; SOURCE LINE # 1095
+	JB   	KEY_S4,?C0084
+			; SOURCE LINE # 1096
+	LCALL	tick_get
+	CLR  	C
+	MOV  	A,R7
+	SUBB 	A,DPL
+	MOV  	A,R6
+	SUBB 	A,DPH
+	CLR  	C
+	SUBB 	A,#027H
+	JC   	?C0083
+			; SOURCE LINE # 1097
 	MOV  	klast,#04H
-			; SOURCE LINE # 1043
+			; SOURCE LINE # 1098
 	MOV  	R7,#04H
 	RET
-			; SOURCE LINE # 1044
-			; SOURCE LINE # 1045
-?C0079:
-			; SOURCE LINE # 1046
+			; SOURCE LINE # 1099
+			; SOURCE LINE # 1100
+?C0084:
+			; SOURCE LINE # 1101
 	MOV  	klast,#02H
-			; SOURCE LINE # 1047
+			; SOURCE LINE # 1102
 	MOV  	R7,#02H
 	RET
-			; SOURCE LINE # 1048
-?C0076:
-			; SOURCE LINE # 1050
+			; SOURCE LINE # 1103
+?C0081:
+			; SOURCE LINE # 1105
 	MOV  	R7,#00H
-			; SOURCE LINE # 1051
-?C0070:
+			; SOURCE LINE # 1106
+?C0075:
 	RET
 ; END OF key_scan
 
 ;--------------------------------------------------------------- ?PR?k_isfwd?MAIN
 k_isfwd:
-			; SOURCE LINE # 1057
-			; SOURCE LINE # 1058
-			; SOURCE LINE # 1059
+			; SOURCE LINE # 1122
+			; SOURCE LINE # 1123
+			; SOURCE LINE # 1124
 	MOV  	A,cur_act
-	CJNE 	A,#01H,?C0081
+	CJNE 	A,#01H,?C0086
 	SETB 	C
 	RET
-?C0081:
-			; SOURCE LINE # 1060
+?C0086:
+			; SOURCE LINE # 1125
 	MOV  	A,cur_act
-	CJNE 	A,#05H,?C0083
+	CJNE 	A,#05H,?C0088
 	SETB 	C
 	RET
-?C0083:
-			; SOURCE LINE # 1061
+?C0088:
+			; SOURCE LINE # 1126
 	MOV  	A,cur_act
-	CJNE 	A,#06H,?C0084
+	CJNE 	A,#06H,?C0089
 	SETB 	C
 	RET
-?C0084:
-			; SOURCE LINE # 1062
+?C0089:
+			; SOURCE LINE # 1127
 	CLR  	C
-			; SOURCE LINE # 1063
-?C0082:
+			; SOURCE LINE # 1128
+?C0087:
 	RET
 ; END OF k_isfwd
 
 ;--------------------------------------------------------------- ?PR?_key2act?MAIN
 _key2act:
 	USING	0
-			; SOURCE LINE # 1065
-			; SOURCE LINE # 1066
-			; SOURCE LINE # 1067
+			; SOURCE LINE # 1130
+			; SOURCE LINE # 1131
+			; SOURCE LINE # 1132
 	MOV  	A,R7
 	ADD  	A,#0EBH
-	JZ   	?C0088
+	JZ   	?C0093
 	ADD  	A,#0D5H
-	JZ   	?C0095
+	JZ   	?C0100
 	ADD  	A,#0FDH
-	JZ   	?C0092
+	JZ   	?C0097
 	DEC  	A
-	JZ   	?C0089
+	JZ   	?C0094
 	ADD  	A,#0FEH
-	JNZ  	?C0096
-			; SOURCE LINE # 1068
-?C0086:
+	JNZ  	?C0101
+			; SOURCE LINE # 1133
+?C0091:
 	MOV  	R7,#01H
 	RET
-			; SOURCE LINE # 1069
-?C0088:
+			; SOURCE LINE # 1134
+?C0093:
 	MOV  	R7,#02H
 	RET
-			; SOURCE LINE # 1070
-?C0089:
+			; SOURCE LINE # 1135
+?C0094:
 	LCALL	k_isfwd
-	JNC  	?C0090
+	JNC  	?C0095
 	MOV  	R7,#05H
 	RET
-?C0090:
+?C0095:
 	MOV  	R7,#03H
-?C0091:
+?C0096:
 	RET
-			; SOURCE LINE # 1071
-?C0092:
+			; SOURCE LINE # 1136
+?C0097:
 	LCALL	k_isfwd
-	JNC  	?C0093
+	JNC  	?C0098
 	MOV  	R7,#06H
 	RET
-?C0093:
+?C0098:
 	MOV  	R7,#04H
-?C0094:
+?C0099:
 	RET
-			; SOURCE LINE # 1072
-?C0095:
+			; SOURCE LINE # 1137
+?C0100:
 	MOV  	R7,#00H
 	RET
-			; SOURCE LINE # 1073
-?C0096:
+			; SOURCE LINE # 1138
+?C0101:
 	MOV  	R7,#0FFH
-			; SOURCE LINE # 1074
-			; SOURCE LINE # 1075
-?C0087:
+			; SOURCE LINE # 1139
+			; SOURCE LINE # 1140
+?C0092:
 	RET
 ; END OF _key2act
 
 ;--------------------------------------------------------------- ?PR?_key2mode?MAIN
 _key2mode:
 	USING	0
-			; SOURCE LINE # 1081
-			; SOURCE LINE # 1082
-			; SOURCE LINE # 1083
+			; SOURCE LINE # 1146
+			; SOURCE LINE # 1147
+			; SOURCE LINE # 1148
 	MOV  	A,R7
 	ADD  	A,#0E8H
-	JZ   	?C0100
+	JZ   	?C0105
 	ADD  	A,#0BAH
-	JZ   	?C0101
+	JZ   	?C0106
 	ADD  	A,#052H
-	JNZ  	?C0102
-			; SOURCE LINE # 1084
-?C0098:
+	JNZ  	?C0107
+			; SOURCE LINE # 1149
+?C0103:
 	MOV  	R7,#00H
 	RET
-			; SOURCE LINE # 1085
-?C0100:
+			; SOURCE LINE # 1150
+?C0105:
 	MOV  	R7,#01H
 	RET
-			; SOURCE LINE # 1086
-?C0101:
+			; SOURCE LINE # 1151
+?C0106:
 	MOV  	R7,#02H
 	RET
-			; SOURCE LINE # 1087
-?C0102:
+			; SOURCE LINE # 1152
+?C0107:
 	MOV  	R7,#0FFH
-			; SOURCE LINE # 1088
-			; SOURCE LINE # 1089
-?C0099:
+			; SOURCE LINE # 1153
+			; SOURCE LINE # 1154
+?C0104:
 	RET
 ; END OF _key2mode
 
 ;--------------------------------------------------------------- ?PR?_mode_goto?MAIN
 _mode_goto:
 	USING	0
-			; SOURCE LINE # 1095
-			; SOURCE LINE # 1096
-			; SOURCE LINE # 1097
+			; SOURCE LINE # 1160
+			; SOURCE LINE # 1161
+			; SOURCE LINE # 1162
 	MOV  	mode,R7
-			; SOURCE LINE # 1098
+			; SOURCE LINE # 1163
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 1100
+			; SOURCE LINE # 1165
 	MOV  	A,R7
-	JNZ  	?C0103
-			; SOURCE LINE # 1104
+	JNZ  	?C0108
+			; SOURCE LINE # 1169
 	MOV  	A,gear
-	JZ   	?C0104
+	JZ   	?C0109
 	MOV  	R7,#01H
-	SJMP 	?C0105
-?C0104:
+	SJMP 	?C0110
+?C0109:
 	MOV  	R7,#00H
-?C0105:
+?C0110:
 	MOV  	cur_act,R7
-			; SOURCE LINE # 1105
+			; SOURCE LINE # 1170
 	MOV  	R5,gear
 	LCALL	_motor_set_core
-			; SOURCE LINE # 1106
+			; SOURCE LINE # 1171
 	LCALL	show_state
-			; SOURCE LINE # 1107
-	SJMP 	?C0106
-?C0103:
-			; SOURCE LINE # 1108
+			; SOURCE LINE # 1172
+	SJMP 	?C0111
+?C0108:
+			; SOURCE LINE # 1173
 	CLR  	A
 	MOV  	cur_act,A
-			; SOURCE LINE # 1109
+			; SOURCE LINE # 1174
 	MOV  	A,gear
-	JNZ  	?C0107
-			; SOURCE LINE # 1110
+	JNZ  	?C0112
+			; SOURCE LINE # 1175
 	MOV  	gear,#03H
-?C0107:
-			; SOURCE LINE # 1111
+?C0112:
+			; SOURCE LINE # 1176
 	LCALL	show_mode
-			; SOURCE LINE # 1112
-?C0106:
-			; SOURCE LINE # 1114
+			; SOURCE LINE # 1177
+?C0111:
+			; SOURCE LINE # 1179
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF _mode_goto
@@ -1115,163 +1112,163 @@ _mode_goto:
 ;--------------------------------------------------------------- ?PR?mode_switch?MAIN
 mode_switch:
 	USING	0
-			; SOURCE LINE # 1117
-			; SOURCE LINE # 1118
-			; SOURCE LINE # 1119
+			; SOURCE LINE # 1183
+			; SOURCE LINE # 1184
+			; SOURCE LINE # 1185
 	MOV  	m?1652,mode
-			; SOURCE LINE # 1121
+			; SOURCE LINE # 1187
 	MOV  	A,m?1652
-	CJNE 	A,#03H,?C0109
-			; SOURCE LINE # 1122
+	CJNE 	A,#03H,?C0114
+			; SOURCE LINE # 1188
 	CLR  	A
 	MOV  	R7,A
-	SJMP 	?C0396
-			; SOURCE LINE # 1124
-?C0109:
-			; SOURCE LINE # 1125
+	SJMP 	?C0405
+			; SOURCE LINE # 1190
+?C0114:
+			; SOURCE LINE # 1191
 	INC  	m?1652
-			; SOURCE LINE # 1126
+			; SOURCE LINE # 1192
 	MOV  	A,m?1652
 	CLR  	C
 	SUBB 	A,#03H
-	JC   	?C0111
-			; SOURCE LINE # 1127
+	JC   	?C0116
+			; SOURCE LINE # 1193
 	CLR  	A
 	MOV  	m?1652,A
-?C0111:
-			; SOURCE LINE # 1128
+?C0116:
+			; SOURCE LINE # 1194
 	MOV  	R7,m?1652
-?C0396:
+?C0405:
 	LCALL	_mode_goto
-			; SOURCE LINE # 1129
-?C0110:
+			; SOURCE LINE # 1195
+?C0115:
 	RET
 ; END OF mode_switch
 
 ;--------------------------------------------------------------- ?PR?light_step?MAIN
 light_step:
 	USING	0
-			; SOURCE LINE # 1136
-			; SOURCE LINE # 1137
-			; SOURCE LINE # 1140
+			; SOURCE LINE # 1202
+			; SOURCE LINE # 1203
+			; SOURCE LINE # 1206
 	MOV  	A,gear
-	JNZ  	?C0112
-			; SOURCE LINE # 1141
+	JNZ  	?C0117
+			; SOURCE LINE # 1207
 	MOV  	act?1753,A
-			; SOURCE LINE # 1142
-	SJMP 	?C0113
-?C0112:
-	JB   	LDR_LEFT,?C0114
-			; SOURCE LINE # 1143
-	JNB  	LDR_RIGHT,?C0115
+			; SOURCE LINE # 1208
+	SJMP 	?C0118
+?C0117:
+	JB   	LDR_LEFT,?C0119
+			; SOURCE LINE # 1209
+	JNB  	LDR_RIGHT,?C0120
 	MOV  	R7,#03H
-	SJMP 	?C0116
-?C0115:
+	SJMP 	?C0121
+?C0120:
 	MOV  	R7,#01H
-?C0116:
+?C0121:
 	MOV  	act?1753,R7
-			; SOURCE LINE # 1144
-	SJMP 	?C0113
-?C0114:
-			; SOURCE LINE # 1145
-	JNB  	LDR_RIGHT,?C0118
-	MOV  	R7,#00H
-	SJMP 	?C0119
-?C0118:
-	MOV  	R7,#04H
+			; SOURCE LINE # 1210
+	SJMP 	?C0118
 ?C0119:
+			; SOURCE LINE # 1211
+	JNB  	LDR_RIGHT,?C0123
+	MOV  	R7,#00H
+	SJMP 	?C0124
+?C0123:
+	MOV  	R7,#04H
+?C0124:
 	MOV  	act?1753,R7
-			; SOURCE LINE # 1146
-?C0113:
-			; SOURCE LINE # 1148
+			; SOURCE LINE # 1212
+?C0118:
+			; SOURCE LINE # 1214
 	MOV  	cur_act,act?1753
-			; SOURCE LINE # 1149
+			; SOURCE LINE # 1215
 	MOV  	R5,gear
 	MOV  	R7,act?1753
 	LCALL	_motor_set_core
-			; SOURCE LINE # 1150
+			; SOURCE LINE # 1216
 	LJMP 	show_mode
 ; END OF light_step
 
 ;--------------------------------------------------------------- ?PR?track_step?MAIN
 track_step:
 	USING	0
-			; SOURCE LINE # 1170
-			; SOURCE LINE # 1171
-			; SOURCE LINE # 1172
+			; SOURCE LINE # 1226
+			; SOURCE LINE # 1227
+			; SOURCE LINE # 1228
 	CLR  	A
 	MOV  	R7,A
-			; SOURCE LINE # 1175
-	JNB  	TRACK_L,?C0121
+			; SOURCE LINE # 1231
+	JNB  	TRACK_L,?C0126
 	MOV  	R7,#02H
-?C0121:
-			; SOURCE LINE # 1176
-	JNB  	TRACK_R,?C0122
+?C0126:
+			; SOURCE LINE # 1232
+	JNB  	TRACK_R,?C0127
 	ORL  	AR7,#01H
-?C0122:
-			; SOURCE LINE # 1178
-	CJNE 	R7,#01H,?C0123
+?C0127:
+			; SOURCE LINE # 1234
+	CJNE 	R7,#01H,?C0128
 	MOV  	act?1855,#04H
-	SJMP 	?C0124
-?C0123:
-			; SOURCE LINE # 1179
-	CJNE 	R7,#02H,?C0125
+	SJMP 	?C0129
+?C0128:
+			; SOURCE LINE # 1235
+	CJNE 	R7,#02H,?C0130
 	MOV  	act?1855,#03H
-	SJMP 	?C0124
-?C0125:
-			; SOURCE LINE # 1180
+	SJMP 	?C0129
+?C0130:
+			; SOURCE LINE # 1236
 	MOV  	act?1855,#01H
-?C0124:
-			; SOURCE LINE # 1183
+?C0129:
+			; SOURCE LINE # 1239
 	MOV  	cur_act,act?1855
-			; SOURCE LINE # 1184
+			; SOURCE LINE # 1240
 	MOV  	R5,gear
 	MOV  	R7,act?1855
 	LCALL	_motor_set_core
-			; SOURCE LINE # 1185
+			; SOURCE LINE # 1241
 	LJMP 	show_mode
 ; END OF track_step
 
 ;--------------------------------------------------------------- ?PR?us_init?MAIN
 us_init:
-			; SOURCE LINE # 1204
-			; SOURCE LINE # 1205
-			; SOURCE LINE # 1206
+			; SOURCE LINE # 1260
+			; SOURCE LINE # 1261
+			; SOURCE LINE # 1262
 	CLR  	ET0
-			; SOURCE LINE # 1207
+			; SOURCE LINE # 1263
 	CLR  	A
 	MOV  	us_st,A
-			; SOURCE LINE # 1208
+			; SOURCE LINE # 1264
 	MOV  	us_wid,A
-			; SOURCE LINE # 1209
+			; SOURCE LINE # 1265
 	MOV  	us_wait,A
-			; SOURCE LINE # 1210
+			; SOURCE LINE # 1266
 	CLR  	us_got
-			; SOURCE LINE # 1211
+			; SOURCE LINE # 1267
 	MOV  	us_res,#0FFH
-			; SOURCE LINE # 1212
+			; SOURCE LINE # 1268
 	CLR  	us_valid
-			; SOURCE LINE # 1213
+			; SOURCE LINE # 1269
 	CLR  	us_seen
-			; SOURCE LINE # 1214
+			; SOURCE LINE # 1270
 	MOV  	us_last10,A
-			; SOURCE LINE # 1215
+			; SOURCE LINE # 1271
 	MOV  	us_last_d,#0FFH
-			; SOURCE LINE # 1219
+			; SOURCE LINE # 1275
 	CLR  	US_TRIG
-			; SOURCE LINE # 1220
+			; SOURCE LINE # 1276
 	SETB 	ET0
-			; SOURCE LINE # 1221
+			; SOURCE LINE # 1277
 	RET
 ; END OF us_init
 
 ;--------------------------------------------------------------- ?PR?us_trigger?MAIN
 us_trigger:
-			; SOURCE LINE # 1227
-			; SOURCE LINE # 1228
-			; SOURCE LINE # 1229
+			; SOURCE LINE # 1283
+			; SOURCE LINE # 1284
+			; SOURCE LINE # 1285
 	CLR  	US_TRIG
-			; SOURCE LINE # 1230
+			; SOURCE LINE # 1286
 	NOP
 	NOP
 	NOP
@@ -1280,265 +1277,439 @@ us_trigger:
 	NOP
 	NOP
 	NOP
-			; SOURCE LINE # 1231
+			; SOURCE LINE # 1287
 	SETB 	US_TRIG
-			; SOURCE LINE # 1232
+			; SOURCE LINE # 1288
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
-			; SOURCE LINE # 1233
+			; SOURCE LINE # 1289
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
-			; SOURCE LINE # 1234
+			; SOURCE LINE # 1290
 	CLR  	US_TRIG
-			; SOURCE LINE # 1236
+			; SOURCE LINE # 1292
 	CLR  	A
 	MOV  	us_wid,A
-			; SOURCE LINE # 1237
+			; SOURCE LINE # 1293
 	MOV  	us_wait,A
-			; SOURCE LINE # 1238
+			; SOURCE LINE # 1294
 	MOV  	us_st,#01H
-			; SOURCE LINE # 1239
+			; SOURCE LINE # 1295
 	RET
 ; END OF us_trigger
 
 ;--------------------------------------------------------------- ?PR?us_read?MAIN
 us_read:
 	USING	0
-			; SOURCE LINE # 1243
-			; SOURCE LINE # 1244
-			; SOURCE LINE # 1245
+			; SOURCE LINE # 1299
+			; SOURCE LINE # 1300
+			; SOURCE LINE # 1301
 	MOV  	R6,ms10_l
-			; SOURCE LINE # 1250
-	JNB  	us_got,?C0130
-			; SOURCE LINE # 1251
+			; SOURCE LINE # 1306
+	JNB  	us_got,?C0135
+			; SOURCE LINE # 1307
 	CLR  	ET0
-			; SOURCE LINE # 1252
+			; SOURCE LINE # 1308
 	MOV  	us_last_d,us_res
-			; SOURCE LINE # 1253
+			; SOURCE LINE # 1309
 	CLR  	us_got
-			; SOURCE LINE # 1254
+			; SOURCE LINE # 1310
 	SETB 	us_valid
-			; SOURCE LINE # 1255
+			; SOURCE LINE # 1311
 	SETB 	ET0
-			; SOURCE LINE # 1256
-?C0130:
-			; SOURCE LINE # 1259
+			; SOURCE LINE # 1312
+?C0135:
+			; SOURCE LINE # 1315
 	MOV  	A,us_st
-	JZ   	?C0131
-			; SOURCE LINE # 1260
-	JNB  	us_valid,?C0132
+	JZ   	?C0136
+			; SOURCE LINE # 1316
+	JNB  	us_valid,?C0137
 	MOV  	R7,us_last_d
 	RET
-?C0132:
+?C0137:
 	MOV  	R7,#0FFH
-?C0133:
+?C0138:
 	RET
-?C0131:
-			; SOURCE LINE # 1264
-	JNB  	us_seen,?C0135
+?C0136:
+			; SOURCE LINE # 1320
+	JNB  	us_seen,?C0140
 	CLR  	C
 	MOV  	A,R6
 	SUBB 	A,us_last10
 	CLR  	C
 	SUBB 	A,#06H
-	JNC  	?C0135
-			; SOURCE LINE # 1265
-	JNB  	us_valid,?C0136
+	JNC  	?C0140
+			; SOURCE LINE # 1321
+	JNB  	us_valid,?C0141
 	MOV  	R7,us_last_d
 	RET
-?C0136:
+?C0141:
 	MOV  	R7,#0FFH
-?C0137:
+?C0142:
 	RET
-?C0135:
-			; SOURCE LINE # 1268
+?C0140:
+			; SOURCE LINE # 1324
 	MOV  	us_last10,R6
-			; SOURCE LINE # 1269
+			; SOURCE LINE # 1325
 	SETB 	us_seen
-			; SOURCE LINE # 1270
+			; SOURCE LINE # 1326
 	LCALL	us_trigger
-			; SOURCE LINE # 1271
-	JNB  	us_valid,?C0138
+			; SOURCE LINE # 1327
+	JNB  	us_valid,?C0143
 	MOV  	R7,us_last_d
-	SJMP 	?C0139
-?C0138:
+	SJMP 	?C0144
+?C0143:
 	MOV  	R7,#0FFH
+?C0144:
+			; SOURCE LINE # 1328
 ?C0139:
-			; SOURCE LINE # 1272
-?C0134:
 	RET
 ; END OF us_read
 
 ;--------------------------------------------------------------- ?PR?ir_det?MAIN
 ir_det:
-			; SOURCE LINE # 1282
-			; SOURCE LINE # 1283
-			; SOURCE LINE # 1284
+			; SOURCE LINE # 1336
+			; SOURCE LINE # 1337
+			; SOURCE LINE # 1338
 	MOV  	A,ir_inv
-	JZ   	?C0140
-			; SOURCE LINE # 1285
-	JNB  	IR_AVOID,?C0141
+	JZ   	?C0145
+			; SOURCE LINE # 1339
+	JNB  	IR_AVOID,?C0146
 	SETB 	C
 	RET
-?C0141:
-			; SOURCE LINE # 1286
+?C0146:
+			; SOURCE LINE # 1340
 	CLR  	C
 	RET
-			; SOURCE LINE # 1287
-?C0140:
-			; SOURCE LINE # 1288
-	JNB  	IR_AVOID,?C0143
+			; SOURCE LINE # 1341
+?C0145:
+			; SOURCE LINE # 1342
+	JNB  	IR_AVOID,?C0148
 	CLR  	C
 	RET
-?C0143:
-			; SOURCE LINE # 1289
+?C0148:
+			; SOURCE LINE # 1343
 	SETB 	C
-			; SOURCE LINE # 1290
-?C0142:
+			; SOURCE LINE # 1344
+?C0147:
 	RET
 ; END OF ir_det
 
 ;--------------------------------------------------------------- ?PR?ir_brake?MAIN
 ir_brake:
 	USING	0
-			; SOURCE LINE # 1325
-			; SOURCE LINE # 1326
-			; SOURCE LINE # 1327
+			; SOURCE LINE # 1380
+			; SOURCE LINE # 1381
+			; SOURCE LINE # 1382
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0145
-?C0144:
-			; SOURCE LINE # 1330
-			; SOURCE LINE # 1331
-			; SOURCE LINE # 1332
-	LCALL	L?0422
-			; SOURCE LINE # 1333
-	LCALL	show_mode
-			; SOURCE LINE # 1334
+	JZ   	?C0150
+?C0149:
+			; SOURCE LINE # 1385
+			; SOURCE LINE # 1386
+			; SOURCE LINE # 1387
+			; SOURCE LINE # 1388
+	LCALL	L?0436
+			; SOURCE LINE # 1389
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
-			; SOURCE LINE # 1335
+			; SOURCE LINE # 1390
 	CLR  	A
 	MOV  	av_beep_n,A
-			; SOURCE LINE # 1340
-?C0145:
+			; SOURCE LINE # 1395
+?C0150:
 	RET
 ; END OF ir_brake
 
 ;--------------------------------------------------------------- ?PR?av_gate_hold?MAIN
 av_gate_hold:
 	USING	0
-			; SOURCE LINE # 1348
-			; SOURCE LINE # 1349
-			; SOURCE LINE # 1350
+			; SOURCE LINE # 1403
+			; SOURCE LINE # 1404
+			; SOURCE LINE # 1405
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0147
-?C0146:
-			; SOURCE LINE # 1353
+	JZ   	?C0152
+?C0151:
+			; SOURCE LINE # 1408
 	MOV  	A,mode
-	CJNE 	A,#01H,?C0148
-			; SOURCE LINE # 1356
+	CJNE 	A,#01H,?C0153
+			; SOURCE LINE # 1411
 	CLR  	A
 	MOV  	mode,A
-			; SOURCE LINE # 1357
+			; SOURCE LINE # 1412
 	MOV  	avst,#03H
-			; SOURCE LINE # 1358
-			; SOURCE LINE # 1359
-	LCALL	L?0424
-			; SOURCE LINE # 1360
-	LCALL	show_mode
-			; SOURCE LINE # 1361
-	SJMP 	?C0397
-			; SOURCE LINE # 1363
-?C0148:
-			; SOURCE LINE # 1366
-			; SOURCE LINE # 1367
-			; SOURCE LINE # 1368
-	LCALL	L?0422
-			; SOURCE LINE # 1369
-	LCALL	show_mode
-			; SOURCE LINE # 1371
+			; SOURCE LINE # 1413
+			; SOURCE LINE # 1414
+			; SOURCE LINE # 1415
+	LCALL	L?0437
+			; SOURCE LINE # 1416
+	SJMP 	?C0406
+			; SOURCE LINE # 1418
+?C0153:
+			; SOURCE LINE # 1421
+			; SOURCE LINE # 1422
+			; SOURCE LINE # 1423
+			; SOURCE LINE # 1424
+	LCALL	L?0436
+			; SOURCE LINE # 1426
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
-			; SOURCE LINE # 1375
+			; SOURCE LINE # 1430
 	MOV  	A,av_beep_n
-	JNZ  	?C0147
-			; SOURCE LINE # 1376
+	JNZ  	?C0152
+			; SOURCE LINE # 1431
 	MOV  	av_beep_n,#01H
-			; SOURCE LINE # 1378
-?C0397:
+			; SOURCE LINE # 1433
+?C0406:
 	MOV  	R7,#018H
 	LCALL	_beep
-			; SOURCE LINE # 1379
-			; SOURCE LINE # 1380
-?C0147:
+			; SOURCE LINE # 1434
+			; SOURCE LINE # 1435
+?C0152:
 	RET
 ; END OF av_gate_hold
+
+;--------------------------------------------------------------- ?PR?av_mnv_start?MAIN
+av_mnv_start:
+	USING	0
+			; SOURCE LINE # 1457
+			; SOURCE LINE # 1458
+			; SOURCE LINE # 1469
+	JNB  	recon,?C0155
+			; SOURCE LINE # 1470
+	LJMP 	ir_brake
+			; SOURCE LINE # 1472
+?C0155:
+			; SOURCE LINE # 1474
+	SETB 	av_mnv
+			; SOURCE LINE # 1475
+	MOV  	avst,#05H
+			; SOURCE LINE # 1476
+	LCALL	tick_get
+	MOV  	back_t0,R6
+	MOV  	back_t0+01H,R7
+			; SOURCE LINE # 1477
+	CLR  	A
+	MOV  	av_beep_n,A
+			; SOURCE LINE # 1478
+	MOV  	R5,#02H
+	MOV  	R7,#02H
+	LCALL	_motor_set_core
+			; SOURCE LINE # 1479
+	LCALL	show_mode
+			; SOURCE LINE # 1480
+?C0156:
+	RET
+; END OF av_mnv_start
+
+;--------------------------------------------------------------- ?PR?av_mnv_step?MAIN
+av_mnv_step:
+	USING	0
+			; SOURCE LINE # 1482
+			; SOURCE LINE # 1483
+			; SOURCE LINE # 1484
+	LCALL	tick_get
+	CLR  	C
+	MOV  	A,R7
+	SUBB 	A,back_t0+01H
+	MOV  	el?2657+01H,A
+	MOV  	A,R6
+	SUBB 	A,back_t0
+	MOV  	el?2657,A
+			; SOURCE LINE # 1488
+	LCALL	us_read
+			; SOURCE LINE # 1490
+	MOV  	A,avst
+	XRL  	A,#05H
+	JNZ  	?C0157
+			; SOURCE LINE # 1493
+	CLR  	C
+	MOV  	A,el?2657+01H
+	SUBB 	A,#088H
+	MOV  	A,el?2657
+	SUBB 	A,#013H
+	JC   	?C0158
+			; SOURCE LINE # 1494
+	MOV  	avst,#06H
+			; SOURCE LINE # 1495
+	LCALL	tick_get
+	MOV  	back_t0,R6
+	MOV  	back_t0+01H,R7
+			; SOURCE LINE # 1496
+	MOV  	A,gear
+	JZ   	?C0159
+	MOV  	R5,A
+	SJMP 	?C0160
+?C0159:
+	MOV  	R5,#03H
+?C0160:
+	MOV  	R7,#04H
+			; SOURCE LINE # 1497
+	SJMP 	?C0409
+			; SOURCE LINE # 1499
+?C0158:
+			; SOURCE LINE # 1500
+	MOV  	R5,#02H
+	MOV  	R7,#02H
+	SJMP 	?C0408
+			; SOURCE LINE # 1502
+?C0157:
+			; SOURCE LINE # 1505
+	CLR  	C
+	MOV  	A,el?2657+01H
+	SUBB 	A,#010H
+	MOV  	A,el?2657
+	SUBB 	A,#027H
+	JNC  	?C0162
+			; SOURCE LINE # 1506
+	MOV  	A,gear
+	JZ   	?C0163
+	MOV  	R5,A
+	SJMP 	?C0164
+?C0163:
+	MOV  	R5,#03H
+?C0164:
+	MOV  	R7,#04H
+?C0408:
+	LJMP 	_motor_set_core
+			; SOURCE LINE # 1508
+?C0162:
+			; SOURCE LINE # 1512
+	LCALL	ir_det
+	JNC  	?C0165
+			; SOURCE LINE # 1513
+	INC  	av_beep_n
+			; SOURCE LINE # 1514
+	MOV  	A,av_beep_n
+	CLR  	C
+	SUBB 	A,#03H
+	JNC  	?C0166
+			; SOURCE LINE # 1515
+	MOV  	avst,#05H
+			; SOURCE LINE # 1516
+	LCALL	tick_get
+	MOV  	back_t0,R6
+	MOV  	back_t0+01H,R7
+			; SOURCE LINE # 1517
+	MOV  	R5,#02H
+	MOV  	R7,#02H
+?C0407:
+			; SOURCE LINE # 1518
+	SJMP 	?C0409
+			; SOURCE LINE # 1520
+?C0166:
+			; SOURCE LINE # 1521
+	CLR  	av_mnv
+			; SOURCE LINE # 1522
+	LJMP 	ir_brake
+			; SOURCE LINE # 1524
+?C0165:
+			; SOURCE LINE # 1525
+	CLR  	av_mnv
+			; SOURCE LINE # 1526
+	CLR  	A
+	MOV  	av_beep_n,A
+			; SOURCE LINE # 1527
+	MOV  	avst,A
+			; SOURCE LINE # 1531
+	MOV  	A,cur_act
+	JNZ  	?C0167
+	MOV  	R5,A
+	SJMP 	?C0168
+?C0167:
+	MOV  	R7,gear
+	MOV  	R5,AR7
+?C0168:
+	MOV  	R7,cur_act
+?C0409:
+	LCALL	_motor_set_core
+			; SOURCE LINE # 1532
+	LCALL	show_mode
+			; SOURCE LINE # 1533
+?C0161:
+	RET
+; END OF av_mnv_step
 
 ;--------------------------------------------------------------- ?PR?av_gate?MAIN
 av_gate:
 	USING	0
-			; SOURCE LINE # 1392
-			; SOURCE LINE # 1393
-			; SOURCE LINE # 1422
+			; SOURCE LINE # 1539
+			; SOURCE LINE # 1540
+			; SOURCE LINE # 1568
+	MOV  	A,mode
+	CJNE 	A,#01H,?C0169
+			; SOURCE LINE # 1569
+	CLR  	av_mnv
+			; SOURCE LINE # 1570
+	LJMP 	?C0411
+			; SOURCE LINE # 1572
+?C0169:
+			; SOURCE LINE # 1577
+	JNB  	av_mnv,?C0171
+			; SOURCE LINE # 1578
+	LJMP 	av_mnv_step
+			; SOURCE LINE # 1580
+?C0171:
+			; SOURCE LINE # 1586
 	LCALL	avoid_off
-	JNC  	?C0150
+	JNC  	?C0172
 	MOV  	A,avst
-	CJNE 	A,#02H,?C0150
-			; SOURCE LINE # 1423
+	CJNE 	A,#02H,?C0172
+			; SOURCE LINE # 1587
 	CLR  	A
 	MOV  	avst,A
-?C0150:
-			; SOURCE LINE # 1428
+?C0172:
+			; SOURCE LINE # 1592
 	MOV  	A,avst
 	XRL  	A,#02H
-	JNZ  	?C0151
-			; SOURCE LINE # 1430
+	JNZ  	?C0173
+			; SOURCE LINE # 1594
 	LCALL	ir_det
 	JNC  	$ + 5H
-	LJMP 	?C0153
-?C0152:
-			; SOURCE LINE # 1442
+	LJMP 	?C0170
+?C0174:
+			; SOURCE LINE # 1602
 	MOV  	A,mode
-	CJNE 	A,#02H,?C0154
-			; SOURCE LINE # 1443
-	SJMP 	?C0398
-			; SOURCE LINE # 1445
-?C0154:
-			; SOURCE LINE # 1448
+	CJNE 	A,#02H,?C0175
+			; SOURCE LINE # 1603
+?C0410:
+	SJMP 	?C0411
+			; SOURCE LINE # 1605
+?C0175:
+			; SOURCE LINE # 1608
 	LCALL	avoid_off
 	JNC  	$ + 5H
-	LJMP 	?C0153
-?C0155:
-			; SOURCE LINE # 1452
+	LJMP 	?C0170
+?C0176:
+			; SOURCE LINE # 1612
 	LCALL	us_read
 	MOV  	A,R7
 	CLR  	C
 	SUBB 	A,#07H
-	JC   	?C0156
-			; SOURCE LINE # 1453
-	JB   	av_clear_on,?C0157
-			; SOURCE LINE # 1454
+	JC   	?C0177
+			; SOURCE LINE # 1613
+	JB   	av_clear_on,?C0178
+			; SOURCE LINE # 1614
 	SETB 	av_clear_on
-			; SOURCE LINE # 1455
+			; SOURCE LINE # 1615
 	LCALL	tick_get
 	MOV  	av_clear_t,R6
 	MOV  	av_clear_t+01H,R7
 	RET
-			; SOURCE LINE # 1457
-?C0157:
-			; SOURCE LINE # 1458
+			; SOURCE LINE # 1617
+?C0178:
+			; SOURCE LINE # 1618
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1553,23 +1724,23 @@ av_gate:
 	MOV  	A,R6
 	SUBB 	A,#013H
 	JNC  	$ + 5H
-	LJMP 	?C0153
-			; SOURCE LINE # 1459
+	LJMP 	?C0170
+			; SOURCE LINE # 1619
 	CLR  	A
 	MOV  	av_beep_n,A
 	RET
-			; SOURCE LINE # 1461
-?C0156:
-			; SOURCE LINE # 1462
+			; SOURCE LINE # 1621
+?C0177:
+			; SOURCE LINE # 1622
 	CLR  	av_clear_on
-			; SOURCE LINE # 1465
+			; SOURCE LINE # 1625
 	MOV  	A,av_beep_n
 	CLR  	C
 	SUBB 	A,#03H
 	JC   	$ + 5H
-	LJMP 	?C0153
-?C0159:
-			; SOURCE LINE # 1467
+	LJMP 	?C0170
+?C0180:
+			; SOURCE LINE # 1627
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1579,82 +1750,82 @@ av_gate:
 	CLR  	C
 	SUBB 	A,#01BH
 	JNC  	$ + 5H
-	LJMP 	?C0153
-			; SOURCE LINE # 1468
+	LJMP 	?C0170
+			; SOURCE LINE # 1628
 	LCALL	tick_get
 	MOV  	av_beep_t,R6
 	MOV  	av_beep_t+01H,R7
-			; SOURCE LINE # 1469
+			; SOURCE LINE # 1629
 	INC  	av_beep_n
-			; SOURCE LINE # 1471
+			; SOURCE LINE # 1631
 	MOV  	R7,#018H
 	LJMP 	_beep
-			; SOURCE LINE # 1472
-			; SOURCE LINE # 1475
-?C0151:
-			; SOURCE LINE # 1479
+			; SOURCE LINE # 1632
+			; SOURCE LINE # 1635
+?C0173:
+			; SOURCE LINE # 1639
 	LCALL	ir_det
-	JNC  	?C0161
-			; SOURCE LINE # 1480
-	LJMP 	ir_brake
-			; SOURCE LINE # 1482
-?C0161:
-			; SOURCE LINE # 1488
+	JNC  	?C0182
+			; SOURCE LINE # 1640
+	LJMP 	av_mnv_start
+			; SOURCE LINE # 1642
+?C0182:
+			; SOURCE LINE # 1648
 	MOV  	A,mode
-	CJNE 	A,#02H,?C0162
-			; SOURCE LINE # 1489
-?C0398:
+	CJNE 	A,#02H,?C0183
+			; SOURCE LINE # 1649
+?C0411:
 	CLR  	A
 	MOV  	avst,A
 	RET
-			; SOURCE LINE # 1491
-?C0162:
-			; SOURCE LINE # 1497
+			; SOURCE LINE # 1651
+?C0183:
+			; SOURCE LINE # 1657
 	MOV  	A,cur_act
-	CJNE 	A,#02H,?C0163
-			; SOURCE LINE # 1498
+	CJNE 	A,#02H,?C0184
+			; SOURCE LINE # 1658
 	CLR  	A
 	MOV  	avst,A
-			; SOURCE LINE # 1499
+			; SOURCE LINE # 1659
 	MOV  	R5,gear
 	MOV  	R7,#02H
-	SJMP 	?C0401
-			; SOURCE LINE # 1501
-?C0163:
-			; SOURCE LINE # 1505
+	LJMP 	?C0414
+			; SOURCE LINE # 1661
+?C0184:
+			; SOURCE LINE # 1665
 	LCALL	avoid_off
-	JNC  	?C0164
-			; SOURCE LINE # 1506
+	JNC  	?C0185
+			; SOURCE LINE # 1666
 	CLR  	A
 	MOV  	avst,A
-			; SOURCE LINE # 1507
+			; SOURCE LINE # 1667
 	MOV  	A,cur_act
-	JZ   	?C0153
+	JZ   	?C0170
 	MOV  	R5,gear
 	MOV  	R7,A
-?C0399:
-	SJMP 	?C0401
-			; SOURCE LINE # 1509
-?C0164:
-			; SOURCE LINE # 1511
+?C0412:
+	SJMP 	?C0414
+			; SOURCE LINE # 1669
+?C0185:
+			; SOURCE LINE # 1671
 	LCALL	us_read
-	MOV  	d?2557,R7
-			; SOURCE LINE # 1515
-	MOV  	A,d?2557
+	MOV  	d?2758,R7
+			; SOURCE LINE # 1675
+	MOV  	A,d?2758
 	CLR  	C
 	SUBB 	A,#03H
-	JNC  	?C0166
-			; SOURCE LINE # 1516
+	JNC  	?C0187
+			; SOURCE LINE # 1676
 	LJMP 	av_gate_hold
-			; SOURCE LINE # 1518
-?C0166:
-			; SOURCE LINE # 1528
+			; SOURCE LINE # 1678
+?C0187:
+			; SOURCE LINE # 1688
 	MOV  	A,avst
 	XRL  	A,#04H
-	JZ   	?C0168
+	JZ   	?C0189
 	MOV  	A,avst
-	CJNE 	A,#01H,?C0167
-?C0168:
+	CJNE 	A,#01H,?C0188
+?C0189:
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -1668,120 +1839,137 @@ av_gate:
 	SUBB 	A,#0F0H
 	MOV  	A,R6
 	SUBB 	A,#0AH
-	JNC  	?C0167
-			; SOURCE LINE # 1529
+	JNC  	?C0188
+			; SOURCE LINE # 1689
 	MOV  	A,cur_act
-	JZ   	?C0153
-?C0169:
-			; SOURCE LINE # 1530
+	JZ   	?C0170
+?C0190:
+			; SOURCE LINE # 1690
 	MOV  	R5,gear
 	MOV  	R7,cur_act
-?C0400:
-	SJMP 	?C0401
-			; SOURCE LINE # 1532
-?C0167:
-			; SOURCE LINE # 1535
+?C0413:
+	SJMP 	?C0414
+			; SOURCE LINE # 1692
+?C0188:
+			; SOURCE LINE # 1695
 	LCALL	tick_get
 	MOV  	av_clear_t,R6
 	MOV  	av_clear_t+01H,R7
-			; SOURCE LINE # 1536
-	MOV  	A,d?2557
+			; SOURCE LINE # 1696
+	MOV  	A,d?2758
 	CLR  	C
-	SUBB 	A,#07H
-	JNC  	?C0170
-			; SOURCE LINE # 1537
+	SUBB 	A,#0AH
+	JNC  	?C0191
+			; SOURCE LINE # 1697
 	MOV  	avst,#01H
-	SJMP 	?C0171
-?C0170:
-			; SOURCE LINE # 1538
-	MOV  	A,d?2557
+	SJMP 	?C0192
+?C0191:
+			; SOURCE LINE # 1698
+	MOV  	A,d?2758
 	CLR  	C
-	SUBB 	A,#0CH
-	JNC  	?C0172
-			; SOURCE LINE # 1539
-	MOV  	avst,#04H
-	SJMP 	?C0171
-?C0172:
-			; SOURCE LINE # 1541
+	SUBB 	A,#0EH
+	JNC  	?C0193
+			; SOURCE LINE # 1699
+	SJMP 	?C0415
+?C0193:
+			; SOURCE LINE # 1702
+	MOV  	A,avst
+	JZ   	?C0196
+	XRL  	A,#03H
+	JZ   	?C0196
+	MOV  	A,d?2758
+	CLR  	C
+	SUBB 	A,#028H
+	JC   	?C0195
+?C0196:
+			; SOURCE LINE # 1703
 	CLR  	A
 	MOV  	avst,A
-?C0171:
-			; SOURCE LINE # 1555
+	SJMP 	?C0192
+?C0195:
+			; SOURCE LINE # 1705
+?C0415:
+	MOV  	avst,#04H
+?C0192:
+			; SOURCE LINE # 1719
 	MOV  	A,cur_act
-	JZ   	?C0153
-?C0174:
-			; SOURCE LINE # 1556
+	JZ   	?C0170
+?C0198:
+			; SOURCE LINE # 1720
 	MOV  	R5,gear
 	MOV  	R7,cur_act
-?C0401:
+?C0414:
 	LCALL	_motor_set_core
-			; SOURCE LINE # 1557
-?C0153:
+			; SOURCE LINE # 1721
+?C0170:
 	RET
 ; END OF av_gate
 
 ;--------------------------------------------------------------- ?PR?avoid_toggle?MAIN
 avoid_toggle:
 	USING	0
-			; SOURCE LINE # 1566
-			; SOURCE LINE # 1567
-			; SOURCE LINE # 1568
+			; SOURCE LINE # 1730
+			; SOURCE LINE # 1731
+			; SOURCE LINE # 1732
 	CPL  	us_avoid_on
-			; SOURCE LINE # 1571
-	JNB  	us_avoid_on,?C0175
-			; SOURCE LINE # 1572
-			; SOURCE LINE # 1573
-	LCALL	L?0420
-			; SOURCE LINE # 1574
+			; SOURCE LINE # 1735
+	JNB  	us_avoid_on,?C0199
+			; SOURCE LINE # 1736
+			; SOURCE LINE # 1737
+	LCALL	L?0434
+			; SOURCE LINE # 1738
 	LCALL	d_20ms
-			; SOURCE LINE # 1575
+			; SOURCE LINE # 1739
 	MOV  	R7,#018H
-			; SOURCE LINE # 1576
-	SJMP 	?C0402
-?C0175:
-			; SOURCE LINE # 1577
+			; SOURCE LINE # 1740
+	SJMP 	?C0416
+?C0199:
+			; SOURCE LINE # 1741
+	JB   	av_mnv,?C0201
+			; SOURCE LINE # 1743
 	CLR  	A
 	MOV  	avst,A
-			; SOURCE LINE # 1578
+?C0201:
+			; SOURCE LINE # 1744
 	MOV  	R7,#028H
-?C0402:
+?C0416:
 	LCALL	_beep
-			; SOURCE LINE # 1579
-?C0176:
-			; SOURCE LINE # 1583
+			; SOURCE LINE # 1745
+?C0200:
+			; SOURCE LINE # 1749
 	LJMP 	show_mode
 ; END OF avoid_toggle
 
 ;--------------------------------------------------------------- ?PR?meas_level?MAIN
 meas_level:
 	USING	0
-			; SOURCE LINE # 1597
-			; SOURCE LINE # 1598
-			; SOURCE LINE # 1603
+			; SOURCE LINE # 1763
+			; SOURCE LINE # 1764
+			; SOURCE LINE # 1769
 	CLR  	ET0
-			; SOURCE LINE # 1604
+			; SOURCE LINE # 1770
 	MOV  	R5,tick_h
-			; SOURCE LINE # 1605
+			; SOURCE LINE # 1771
 	MOV  	R4,tick_l
-			; SOURCE LINE # 1606
+			; SOURCE LINE # 1772
 	SETB 	ET0
-			; SOURCE LINE # 1608
+			; SOURCE LINE # 1774
 	MOV  	A,R5
 	MOV  	R6,A
 	MOV  	A,R4
 	MOV  	R3,A
 	MOV  	R2,AR6
-			; SOURCE LINE # 1610
-?C0178:
-			; SOURCE LINE # 1611
+			; SOURCE LINE # 1776
+?C0203:
+			; SOURCE LINE # 1777
 	CLR  	ET0
-			; SOURCE LINE # 1612
+			; SOURCE LINE # 1778
 	MOV  	R5,tick_h
-			; SOURCE LINE # 1613
+			; SOURCE LINE # 1779
 	MOV  	R4,tick_l
-			; SOURCE LINE # 1614
+			; SOURCE LINE # 1780
 	SETB 	ET0
-			; SOURCE LINE # 1615
+			; SOURCE LINE # 1781
 	MOV  	A,R5
 	MOV  	R6,A
 	MOV  	A,R4
@@ -1793,371 +1981,371 @@ meas_level:
 	MOV  	A,R6
 	SUBB 	A,R2
 	MOV  	R6,A
-			; SOURCE LINE # 1617
+			; SOURCE LINE # 1783
 	MOV  	A,ml_cap
-	JZ   	?C0180
-			; SOURCE LINE # 1618
+	JZ   	?C0205
+			; SOURCE LINE # 1784
 	MOV  	DPL,A
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,DPL
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0183
-			; SOURCE LINE # 1619
-			; SOURCE LINE # 1620
-	SJMP 	?C0403
-			; SOURCE LINE # 1621
-			; SOURCE LINE # 1622
-?C0180:
-			; SOURCE LINE # 1623
+	JC   	?C0208
+			; SOURCE LINE # 1785
+			; SOURCE LINE # 1786
+	SJMP 	?C0417
+			; SOURCE LINE # 1787
+			; SOURCE LINE # 1788
+?C0205:
+			; SOURCE LINE # 1789
 	SETB 	C
 	MOV  	A,R7
 	SUBB 	A,#0FFH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0183
-			; SOURCE LINE # 1624
-?C0403:
+	JC   	?C0208
+			; SOURCE LINE # 1790
+?C0417:
 	MOV  	ml_dur,R6
 	MOV  	ml_dur+01H,R7
-			; SOURCE LINE # 1625
+			; SOURCE LINE # 1791
 	SETB 	C
 	RET
-			; SOURCE LINE # 1626
-			; SOURCE LINE # 1627
-?C0183:
-			; SOURCE LINE # 1629
+			; SOURCE LINE # 1792
+			; SOURCE LINE # 1793
+?C0208:
+			; SOURCE LINE # 1795
 	MOV  	A,ml_level
-	JZ   	?C0185
-			; SOURCE LINE # 1630
-	JB   	IR_IN,?C0178
-			; SOURCE LINE # 1631
-			; SOURCE LINE # 1632
-	SJMP 	?C0404
-			; SOURCE LINE # 1633
-			; SOURCE LINE # 1634
-?C0185:
-			; SOURCE LINE # 1635
-	JNB  	IR_IN,?C0178
-			; SOURCE LINE # 1636
-?C0404:
+	JZ   	?C0210
+			; SOURCE LINE # 1796
+	JB   	IR_IN,?C0203
+			; SOURCE LINE # 1797
+			; SOURCE LINE # 1798
+	SJMP 	?C0418
+			; SOURCE LINE # 1799
+			; SOURCE LINE # 1800
+?C0210:
+			; SOURCE LINE # 1801
+	JNB  	IR_IN,?C0203
+			; SOURCE LINE # 1802
+?C0418:
 	MOV  	ml_dur,R6
 	MOV  	ml_dur+01H,R7
-			; SOURCE LINE # 1637
+			; SOURCE LINE # 1803
 	CLR  	C
-			; SOURCE LINE # 1638
-			; SOURCE LINE # 1639
-			; SOURCE LINE # 1640
-			; SOURCE LINE # 1641
-?C0182:
+			; SOURCE LINE # 1804
+			; SOURCE LINE # 1805
+			; SOURCE LINE # 1806
+			; SOURCE LINE # 1807
+?C0207:
 	RET
 ; END OF meas_level
 
 ;--------------------------------------------------------------- ?PR?ir_reset?MAIN
 ir_reset:
-			; SOURCE LINE # 1659
-			; SOURCE LINE # 1660
-			; SOURCE LINE # 1661
+			; SOURCE LINE # 1825
+			; SOURCE LINE # 1826
+			; SOURCE LINE # 1827
 	CLR  	A
 	MOV  	ml_cap,A
-			; SOURCE LINE # 1662
+			; SOURCE LINE # 1828
 	MOV  	ir_ledlo,A
-			; SOURCE LINE # 1663
+			; SOURCE LINE # 1829
 	MOV  	ir_ledhi,A
-			; SOURCE LINE # 1664
+			; SOURCE LINE # 1830
 	CLR  	ir_short
-			; SOURCE LINE # 1665
+			; SOURCE LINE # 1831
 	MOV  	irstat,#01H
-			; SOURCE LINE # 1666
+			; SOURCE LINE # 1832
 	RET
 ; END OF ir_reset
 
 ;--------------------------------------------------------------- ?PR?_ir_setbit?MAIN
 _ir_setbit:
-			; SOURCE LINE # 1669
-			; SOURCE LINE # 1670
-			; SOURCE LINE # 1671
+			; SOURCE LINE # 1835
+			; SOURCE LINE # 1836
+			; SOURCE LINE # 1837
 	MOV  	A,R7
 	DEC  	A
-	JZ   	?C0192
+	JZ   	?C0217
 	DEC  	A
-	JZ   	?C0193
+	JZ   	?C0218
 	ADD  	A,#02H
-	JNZ  	?C0194
-			; SOURCE LINE # 1672
-?C0191:
+	JNZ  	?C0219
+			; SOURCE LINE # 1838
+?C0216:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib0,A
 	RET
-			; SOURCE LINE # 1673
-?C0192:
+			; SOURCE LINE # 1839
+?C0217:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib1,A
 	RET
-			; SOURCE LINE # 1674
-?C0193:
+			; SOURCE LINE # 1840
+?C0218:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib2,A
 	RET
-			; SOURCE LINE # 1675
-?C0194:
+			; SOURCE LINE # 1841
+?C0219:
 	MOV  	A,ir_maskb
 	ORL  	ir_ib3,A
-			; SOURCE LINE # 1676
-			; SOURCE LINE # 1677
-?C0195:
+			; SOURCE LINE # 1842
+			; SOURCE LINE # 1843
+?C0220:
 	RET
 ; END OF _ir_setbit
 
 ;--------------------------------------------------------------- ?PR?ir_decode_bits?MAIN
 ir_decode_bits:
 	USING	0
-			; SOURCE LINE # 1680
-			; SOURCE LINE # 1681
-			; SOURCE LINE # 1682
+			; SOURCE LINE # 1846
+			; SOURCE LINE # 1847
+			; SOURCE LINE # 1848
 	CLR  	A
 	MOV  	ir_ib0,A
-			; SOURCE LINE # 1683
+			; SOURCE LINE # 1849
 	MOV  	ir_ib1,A
-			; SOURCE LINE # 1684
+			; SOURCE LINE # 1850
 	MOV  	ir_ib2,A
-			; SOURCE LINE # 1685
+			; SOURCE LINE # 1851
 	MOV  	ir_ib3,A
-			; SOURCE LINE # 1686
+			; SOURCE LINE # 1852
 	MOV  	ir_bits,#020H
-			; SOURCE LINE # 1687
+			; SOURCE LINE # 1853
 	MOV  	ir_ptridx,A
-			; SOURCE LINE # 1688
+			; SOURCE LINE # 1854
 	MOV  	ir_maskb,#01H
-?C0196:
-			; SOURCE LINE # 1690
-			; SOURCE LINE # 1692
+?C0221:
+			; SOURCE LINE # 1856
+			; SOURCE LINE # 1858
 	CLR  	A
 	MOV  	ml_level,A
-			; SOURCE LINE # 1693
+			; SOURCE LINE # 1859
 	MOV  	ml_cap,A
-			; SOURCE LINE # 1694
+			; SOURCE LINE # 1860
 	LCALL	meas_level
-	JNC  	?C0198
-			; SOURCE LINE # 1695
+	JNC  	?C0223
+			; SOURCE LINE # 1861
 	CLR  	C
 	RET
-?C0198:
-			; SOURCE LINE # 1698
+?C0223:
+			; SOURCE LINE # 1864
 	MOV  	ml_level,#01H
-			; SOURCE LINE # 1699
+			; SOURCE LINE # 1865
 	MOV  	A,ir_bits
-	CJNE 	A,#01H,?C0200
-			; SOURCE LINE # 1702
+	CJNE 	A,#01H,?C0225
+			; SOURCE LINE # 1868
 	MOV  	ml_cap,#0CH
-			; SOURCE LINE # 1703
+			; SOURCE LINE # 1869
 	LCALL	meas_level
-	JNC  	?C0202
-			; SOURCE LINE # 1704
-			; SOURCE LINE # 1705
-	SJMP 	?C0405
-?C0200:
-			; SOURCE LINE # 1706
+	JNC  	?C0227
+			; SOURCE LINE # 1870
+			; SOURCE LINE # 1871
+	SJMP 	?C0419
+?C0225:
+			; SOURCE LINE # 1872
 	CLR  	A
 	MOV  	ml_cap,A
-			; SOURCE LINE # 1707
+			; SOURCE LINE # 1873
 	LCALL	meas_level
-	JNC  	?C0203
-			; SOURCE LINE # 1708
+	JNC  	?C0228
+			; SOURCE LINE # 1874
 	CLR  	C
 	RET
-?C0203:
-			; SOURCE LINE # 1709
+?C0228:
+			; SOURCE LINE # 1875
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0BH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0202
-			; SOURCE LINE # 1710
-?C0405:
+	JC   	?C0227
+			; SOURCE LINE # 1876
+?C0419:
 	MOV  	R7,ir_ptridx
 	LCALL	_ir_setbit
-			; SOURCE LINE # 1711
-?C0202:
-			; SOURCE LINE # 1714
+			; SOURCE LINE # 1877
+?C0227:
+			; SOURCE LINE # 1880
 	MOV  	A,ir_maskb
 	ADD  	A,ACC
 	MOV  	ir_maskb,A
-			; SOURCE LINE # 1715
-	JNZ  	?C0205
-			; SOURCE LINE # 1716
+			; SOURCE LINE # 1881
+	JNZ  	?C0230
+			; SOURCE LINE # 1882
 	MOV  	ir_maskb,#01H
-			; SOURCE LINE # 1717
+			; SOURCE LINE # 1883
 	INC  	ir_ptridx
-			; SOURCE LINE # 1718
-?C0205:
-			; SOURCE LINE # 1719
-	DJNZ 	ir_bits,?C0196
-			; SOURCE LINE # 1720
-?C0197:
-			; SOURCE LINE # 1723
+			; SOURCE LINE # 1884
+?C0230:
+			; SOURCE LINE # 1885
+	DJNZ 	ir_bits,?C0221
+			; SOURCE LINE # 1886
+?C0222:
+			; SOURCE LINE # 1889
 	MOV  	A,ir_ib0
 	CPL  	A
 	XRL  	A,ir_ib1
-	JZ   	?C0206
+	JZ   	?C0231
 	CLR  	C
 	RET
-?C0206:
-			; SOURCE LINE # 1724
+?C0231:
+			; SOURCE LINE # 1890
 	MOV  	A,ir_ib2
 	CPL  	A
 	XRL  	A,ir_ib3
-	JZ   	?C0207
+	JZ   	?C0232
 	CLR  	C
 	RET
-?C0207:
-			; SOURCE LINE # 1725
+?C0232:
+			; SOURCE LINE # 1891
 	SETB 	C
-			; SOURCE LINE # 1726
-?C0199:
+			; SOURCE LINE # 1892
+?C0224:
 	RET
 ; END OF ir_decode_bits
 
 ;--------------------------------------------------------------- ?PR?ir_decode?MAIN
 ir_decode:
 	USING	0
-			; SOURCE LINE # 1729
-			; SOURCE LINE # 1730
-			; SOURCE LINE # 1732
+			; SOURCE LINE # 1895
+			; SOURCE LINE # 1896
+			; SOURCE LINE # 1898
 	CLR  	A
 	MOV  	ml_level,A
-			; SOURCE LINE # 1733
+			; SOURCE LINE # 1899
 	MOV  	ml_cap,A
-			; SOURCE LINE # 1734
+			; SOURCE LINE # 1900
 	LCALL	meas_level
-	JNC  	?C0208
-			; SOURCE LINE # 1735
-	SJMP 	?C0408
-			; SOURCE LINE # 1737
-?C0208:
-			; SOURCE LINE # 1738
+	JNC  	?C0233
+			; SOURCE LINE # 1901
+	SJMP 	?C0422
+			; SOURCE LINE # 1903
+?C0233:
+			; SOURCE LINE # 1904
 	MOV  	ir_ledlo,ml_dur+01H
-			; SOURCE LINE # 1739
+			; SOURCE LINE # 1905
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0FFH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0210
-			; SOURCE LINE # 1740
-?C0406:
-	SJMP 	?C0408
-			; SOURCE LINE # 1742
-?C0210:
-			; SOURCE LINE # 1743
+	JC   	?C0235
+			; SOURCE LINE # 1906
+?C0420:
+	SJMP 	?C0422
+			; SOURCE LINE # 1908
+?C0235:
+			; SOURCE LINE # 1909
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#046H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0212
+	JC   	?C0237
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#078H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0211
-?C0212:
-			; SOURCE LINE # 1744
-?C0407:
-	SJMP 	?C0408
-			; SOURCE LINE # 1746
-?C0211:
-			; SOURCE LINE # 1753
+	JC   	?C0236
+?C0237:
+			; SOURCE LINE # 1910
+?C0421:
+	SJMP 	?C0422
+			; SOURCE LINE # 1912
+?C0236:
+			; SOURCE LINE # 1919
 	MOV  	ml_level,#01H
-			; SOURCE LINE # 1754
+			; SOURCE LINE # 1920
 	MOV  	ml_cap,#03CH
-			; SOURCE LINE # 1755
+			; SOURCE LINE # 1921
 	LCALL	meas_level
-	JNC  	?C0213
-			; SOURCE LINE # 1756
+	JNC  	?C0238
+			; SOURCE LINE # 1922
 	MOV  	ir_ledhi,ml_dur+01H
-			; SOURCE LINE # 1757
-	SJMP 	?C0409
-			; SOURCE LINE # 1759
-?C0213:
-			; SOURCE LINE # 1760
+			; SOURCE LINE # 1923
+	SJMP 	?C0423
+			; SOURCE LINE # 1925
+?C0238:
+			; SOURCE LINE # 1926
 	MOV  	ir_ledhi,ml_dur+01H
-			; SOURCE LINE # 1761
+			; SOURCE LINE # 1927
 	SETB 	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0FFH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JC   	?C0214
-			; SOURCE LINE # 1762
-?C0409:
+	JC   	?C0239
+			; SOURCE LINE # 1928
+?C0423:
 	MOV  	irstat,#03H
 	RET
-			; SOURCE LINE # 1764
-?C0214:
-			; SOURCE LINE # 1765
+			; SOURCE LINE # 1930
+?C0239:
+			; SOURCE LINE # 1931
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#0CH
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JNC  	?C0215
-			; SOURCE LINE # 1766
-?C0408:
+	JNC  	?C0240
+			; SOURCE LINE # 1932
+?C0422:
 	MOV  	irstat,#02H
 	RET
-			; SOURCE LINE # 1768
-?C0215:
-			; SOURCE LINE # 1769
+			; SOURCE LINE # 1934
+?C0240:
+			; SOURCE LINE # 1935
 	CLR  	C
 	MOV  	A,ml_dur+01H
 	SUBB 	A,#019H
 	MOV  	A,ml_dur
 	SUBB 	A,#00H
-	JNC  	?C0216
-			; SOURCE LINE # 1770
+	JNC  	?C0241
+			; SOURCE LINE # 1936
 	SETB 	ir_short
-?C0216:
-			; SOURCE LINE # 1773
+?C0241:
+			; SOURCE LINE # 1939
 	LCALL	ir_decode_bits
-	JNC  	?C0217
-			; SOURCE LINE # 1774
+	JNC  	?C0242
+			; SOURCE LINE # 1940
 	CLR  	A
 	MOV  	irstat,A
 	RET
-			; SOURCE LINE # 1776
-?C0217:
-			; SOURCE LINE # 1779
-	JNB  	ir_short,?C0218
+			; SOURCE LINE # 1942
+?C0242:
+			; SOURCE LINE # 1945
+	JNB  	ir_short,?C0243
 	MOV  	R7,#03H
-	SJMP 	?C0219
-?C0218:
+	SJMP 	?C0244
+?C0243:
 	MOV  	R7,#02H
-?C0219:
+?C0244:
 	MOV  	irstat,R7
-			; SOURCE LINE # 1780
-?C0209:
+			; SOURCE LINE # 1946
+?C0234:
 	RET
 ; END OF ir_decode
 
 ;--------------------------------------------------------------- ?PR?ir_recv?MAIN
 ir_recv:
 	USING	0
-			; SOURCE LINE # 1787
-			; SOURCE LINE # 1788
-			; SOURCE LINE # 1791
+			; SOURCE LINE # 1953
+			; SOURCE LINE # 1954
+			; SOURCE LINE # 1957
 	LCALL	ir_reset
-			; SOURCE LINE # 1794
+			; SOURCE LINE # 1960
 	LCALL	tick_get
 	MOV  	R3,AR7
 	MOV  	R2,AR6
-?C0220:
-			; SOURCE LINE # 1795
-	JNB  	IR_IN,?C0221
-			; SOURCE LINE # 1796
+?C0245:
+			; SOURCE LINE # 1961
+	JNB  	IR_IN,?C0246
+			; SOURCE LINE # 1962
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -2171,224 +2359,232 @@ ir_recv:
 	SUBB 	A,#0FFH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JC   	?C0220
+	JC   	?C0245
 	RET
-?C0221:
-			; SOURCE LINE # 1800
+?C0246:
+			; SOURCE LINE # 1966
 	LCALL	ir_decode
-			; SOURCE LINE # 1801
-?C0223:
+			; SOURCE LINE # 1967
+?C0248:
 	RET
 ; END OF ir_recv
 
 ;--------------------------------------------------------------- ?PR?ir_recv_nb?MAIN
 ir_recv_nb:
 	USING	0
-			; SOURCE LINE # 1808
-			; SOURCE LINE # 1809
-			; SOURCE LINE # 1810
+			; SOURCE LINE # 1974
+			; SOURCE LINE # 1975
+			; SOURCE LINE # 1976
 	LCALL	ir_reset
-			; SOURCE LINE # 1811
-	JB   	IR_IN,?C0225
-?C0224:
-			; SOURCE LINE # 1813
+			; SOURCE LINE # 1977
+	JB   	IR_IN,?C0250
+?C0249:
+			; SOURCE LINE # 1979
 	LCALL	ir_decode
-			; SOURCE LINE # 1814
-?C0225:
+			; SOURCE LINE # 1980
+?C0250:
 	RET
 ; END OF ir_recv_nb
 
 ;--------------------------------------------------------------- ?PR?stamp_now?MAIN
 stamp_now:
 	USING	0
-			; SOURCE LINE # 1817
-			; SOURCE LINE # 1818
-			; SOURCE LINE # 1819
+			; SOURCE LINE # 1983
+			; SOURCE LINE # 1984
+			; SOURCE LINE # 1985
 	LCALL	tick_get
 	MOV  	lastt,R6
 	MOV  	lastt+01H,R7
-			; SOURCE LINE # 1820
+			; SOURCE LINE # 1986
 	RET
 ; END OF stamp_now
 
 ;--------------------------------------------------------------- ?PR?ir_errpr?MAIN
 ir_errpr:
-			; SOURCE LINE # 1823
-			; SOURCE LINE # 1824
-			; SOURCE LINE # 1842
+			; SOURCE LINE # 1989
+			; SOURCE LINE # 1990
+			; SOURCE LINE # 2008
 	RET
 ; END OF ir_errpr
 
 ;--------------------------------------------------------------- ?PR?do_key?MAIN
 do_key:
 	USING	0
-			; SOURCE LINE # 1847
-			; SOURCE LINE # 1848
-			; SOURCE LINE # 1854
+			; SOURCE LINE # 2013
+			; SOURCE LINE # 2014
+			; SOURCE LINE # 2020
 	MOV  	A,avst
-	CJNE 	A,#02H,?C0228
-			; SOURCE LINE # 1855
+	CJNE 	A,#02H,?C0253
+			; SOURCE LINE # 2021
 	MOV  	avst,#03H
-?C0228:
-			; SOURCE LINE # 1859
+?C0253:
+			; SOURCE LINE # 2028
 	MOV  	A,ir_ib2
-	CJNE 	A,#042H,?C0229
+	CJNE 	A,#042H,?C0254
 	LJMP 	rec_key
-?C0229:
-			; SOURCE LINE # 1860
+?C0254:
+			; SOURCE LINE # 2029
 	MOV  	A,ir_ib2
-	CJNE 	A,#04AH,?C0231
+	CJNE 	A,#04AH,?C0256
 	LJMP 	clr_key
-?C0231:
-			; SOURCE LINE # 1861
+?C0256:
+			; SOURCE LINE # 2030
 	MOV  	A,ir_ib2
-	CJNE 	A,#052H,?C0232
+	CJNE 	A,#052H,?C0257
 	LJMP 	play_key
-?C0232:
-			; SOURCE LINE # 1869
+?C0257:
+			; SOURCE LINE # 2038
 	MOV  	A,ir_ib2
-	CJNE 	A,#01CH,?C0233
-			; SOURCE LINE # 1870
+	CJNE 	A,#01CH,?C0258
+			; SOURCE LINE # 2039
 	LJMP 	avoid_toggle
-			; SOURCE LINE # 1872
-?C0233:
-			; SOURCE LINE # 1875
+			; SOURCE LINE # 2041
+?C0258:
+			; SOURCE LINE # 2044
 	MOV  	R7,ir_ib2
 	LCALL	_key2mode
 	MOV  	R4,AR7
-			; SOURCE LINE # 1876
+			; SOURCE LINE # 2045
 	MOV  	A,R4
 	CPL  	A
-	JZ   	?C0234
-			; SOURCE LINE # 1877
-	JNB  	recon,?C0235
-			; SOURCE LINE # 1880
-			; SOURCE LINE # 1881
-	LCALL	L?0420
-			; SOURCE LINE # 1882
-	SJMP 	?C0413
-			; SOURCE LINE # 1884
-?C0235:
-			; SOURCE LINE # 1885
+	JZ   	?C0259
+			; SOURCE LINE # 2046
+	JNB  	recon,?C0260
+			; SOURCE LINE # 2049
+			; SOURCE LINE # 2050
+	LCALL	L?0434
+			; SOURCE LINE # 2051
+	SJMP 	?C0427
+			; SOURCE LINE # 2053
+?C0260:
+			; SOURCE LINE # 2054
 	MOV  	A,R4
-	CJNE 	A,mode,?C0236
-			; SOURCE LINE # 1886
-?C0410:
-	SJMP 	?C0413
-			; SOURCE LINE # 1888
-?C0236:
-			; SOURCE LINE # 1889
+	CJNE 	A,mode,?C0261
+			; SOURCE LINE # 2055
+?C0424:
+	SJMP 	?C0427
+			; SOURCE LINE # 2057
+?C0261:
+			; SOURCE LINE # 2058
 	MOV  	R7,AR4
 	LJMP 	_mode_goto
-			; SOURCE LINE # 1891
-?C0234:
-			; SOURCE LINE # 1894
+			; SOURCE LINE # 2060
+?C0259:
+			; SOURCE LINE # 2063
 	MOV  	A,ir_ib2
-	CJNE 	A,#05AH,?C0237
-			; SOURCE LINE # 1895
+	CJNE 	A,#05AH,?C0262
+			; SOURCE LINE # 2064
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0230
-?C0238:
-			; SOURCE LINE # 1897
+	JNC  	?C0255
+?C0263:
+			; SOURCE LINE # 2066
 	INC  	gear
-			; SOURCE LINE # 1898
-	SJMP 	?C0239
-?C0237:
+			; SOURCE LINE # 2067
+	SJMP 	?C0264
+?C0262:
 	MOV  	A,ir_ib2
-	CJNE 	A,#08H,?C0240
-			; SOURCE LINE # 1899
+	CJNE 	A,#08H,?C0265
+			; SOURCE LINE # 2068
 	MOV  	A,gear
-	JZ   	?C0230
-?C0241:
-			; SOURCE LINE # 1901
+	JZ   	?C0255
+?C0266:
+			; SOURCE LINE # 2070
 	DEC  	gear
-			; SOURCE LINE # 1902
-	SJMP 	?C0239
-?C0240:
-			; SOURCE LINE # 1906
+			; SOURCE LINE # 2071
+	SJMP 	?C0264
+?C0265:
+			; SOURCE LINE # 2075
 	MOV  	R7,ir_ib2
 	LCALL	_key2act
-			; SOURCE LINE # 1908
+			; SOURCE LINE # 2077
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0230
-			; SOURCE LINE # 1911
-?C0243:
-			; SOURCE LINE # 1913
+	JZ   	?C0255
+			; SOURCE LINE # 2080
+?C0268:
+			; SOURCE LINE # 2083
+	JNB  	av_mnv,?C0269
+			; SOURCE LINE # 2084
+	CLR  	av_mnv
+			; SOURCE LINE # 2085
+	MOV  	avst,#03H
+			; SOURCE LINE # 2086
+?C0269:
+			; SOURCE LINE # 2088
 	MOV  	A,R7
-	JNZ  	?C0244
-			; SOURCE LINE # 1914
+	JNZ  	?C0270
+			; SOURCE LINE # 2089
 	MOV  	cur_act,A
-			; SOURCE LINE # 1915
+			; SOURCE LINE # 2090
 	MOV  	R5,A
 	MOV  	R7,A
-			; SOURCE LINE # 1916
-	SJMP 	?C0412
-?C0244:
-			; SOURCE LINE # 1917
+			; SOURCE LINE # 2091
+	SJMP 	?C0426
+?C0270:
+			; SOURCE LINE # 2092
 	MOV  	A,gear
-	JNZ  	?C0246
-			; SOURCE LINE # 1918
+	JNZ  	?C0272
+			; SOURCE LINE # 2093
 	MOV  	gear,#03H
-?C0246:
-			; SOURCE LINE # 1919
+?C0272:
+			; SOURCE LINE # 2094
 	MOV  	cur_act,R7
-			; SOURCE LINE # 1920
+			; SOURCE LINE # 2095
 	MOV  	R5,gear
-?C0412:
+?C0426:
 	LCALL	_motor_set_core
-			; SOURCE LINE # 1921
-?C0245:
-			; SOURCE LINE # 1923
+			; SOURCE LINE # 2096
+?C0271:
+			; SOURCE LINE # 2098
 	LCALL	show_state
-			; SOURCE LINE # 1925
-?C0411:
-	SJMP 	?C0413
-			; SOURCE LINE # 1927
-?C0239:
-			; SOURCE LINE # 1930
+			; SOURCE LINE # 2100
+?C0425:
+	SJMP 	?C0427
+			; SOURCE LINE # 2102
+?C0264:
+			; SOURCE LINE # 2105
 	MOV  	A,cur_act
-	JZ   	?C0247
-			; SOURCE LINE # 1931
+	JZ   	?C0273
+			; SOURCE LINE # 2106
 	MOV  	R5,gear
 	MOV  	R7,A
 	LCALL	_motor_set_core
-?C0247:
-			; SOURCE LINE # 1932
+?C0273:
+			; SOURCE LINE # 2107
 	LCALL	show_state
-			; SOURCE LINE # 1933
-?C0413:
+			; SOURCE LINE # 2108
+?C0427:
 	MOV  	R7,#018H
 	LCALL	_beep
-			; SOURCE LINE # 1935
-?C0230:
+			; SOURCE LINE # 2110
+?C0255:
 	RET
 ; END OF do_key
 
 ;--------------------------------------------------------------- ?PR?ir_holdchk?MAIN
 ir_holdchk:
 	USING	0
-			; SOURCE LINE # 1945
-			; SOURCE LINE # 1946
-			; SOURCE LINE # 1949
+			; SOURCE LINE # 2120
+			; SOURCE LINE # 2121
+			; SOURCE LINE # 2124
 	MOV  	A,cur_act
-	JZ   	?C0249
-?C0248:
-			; SOURCE LINE # 1952
+	JZ   	?C0275
+?C0274:
+			; SOURCE LINE # 2127
 	MOV  	A,avst
 	XRL  	A,#03H
-	JZ   	?C0250
-	JB   	recon,?C0250
-			; SOURCE LINE # 1953
+	JZ   	?C0276
+	JB   	recon,?C0276
+			; SOURCE LINE # 2128
 	MOV  	A,cur_act
 	XRL  	A,#01H
-	JZ   	?C0249
-?C0251:
-			; SOURCE LINE # 1955
-?C0250:
-			; SOURCE LINE # 1957
+	JZ   	?C0275
+?C0277:
+			; SOURCE LINE # 2130
+?C0276:
+			; SOURCE LINE # 2132
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -2397,84 +2593,95 @@ ir_holdchk:
 	MOV  	A,R6
 	SUBB 	A,lastt
 	MOV  	R6,A
-			; SOURCE LINE # 1958
+			; SOURCE LINE # 2133
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#0B8H
 	MOV  	A,R6
 	SUBB 	A,#0BH
-	JC   	?C0249
-?C0252:
-			; SOURCE LINE # 1963
-	JB   	recon,?C0253
-	MOV  	A,cur_act
-	XRL  	A,#05H
-	JZ   	?C0254
-	MOV  	A,cur_act
-	CJNE 	A,#06H,?C0253
-?C0254:
-			; SOURCE LINE # 1964
-	MOV  	cur_act,#01H
-	SJMP 	?C0255
-?C0253:
-			; SOURCE LINE # 1966
+	JC   	?C0275
+?C0278:
+			; SOURCE LINE # 2139
+	JNB  	av_mnv,?C0279
+			; SOURCE LINE # 2140
 	CLR  	A
 	MOV  	cur_act,A
-?C0255:
-			; SOURCE LINE # 1968
+	RET
+			; SOURCE LINE # 2143
+?C0279:
+			; SOURCE LINE # 2147
+	JB   	recon,?C0280
 	MOV  	A,cur_act
-	JNZ  	?C0256
+	XRL  	A,#05H
+	JZ   	?C0281
+	MOV  	A,cur_act
+	CJNE 	A,#06H,?C0280
+?C0281:
+			; SOURCE LINE # 2148
+	MOV  	cur_act,#01H
+	SJMP 	?C0282
+?C0280:
+			; SOURCE LINE # 2150
+	CLR  	A
+	MOV  	cur_act,A
+?C0282:
+			; SOURCE LINE # 2152
+	MOV  	A,cur_act
+	JNZ  	?C0283
 	MOV  	R5,A
-	SJMP 	?C0257
-?C0256:
+	SJMP 	?C0284
+?C0283:
 	MOV  	R7,gear
 	MOV  	R5,AR7
-?C0257:
-			; SOURCE LINE # 1969
-	LCALL	L?0427
-			; SOURCE LINE # 1970
+?C0284:
+			; SOURCE LINE # 2153
+	LCALL	L?0438
+			; SOURCE LINE # 2154
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 1972
+			; SOURCE LINE # 2156
 	MOV  	A,avst
-	CJNE 	A,#03H,?C0249
-			; SOURCE LINE # 1973
+	CJNE 	A,#03H,?C0275
+			; SOURCE LINE # 2157
 	CLR  	A
 	MOV  	avst,A
-			; SOURCE LINE # 1975
-?C0249:
+			; SOURCE LINE # 2159
+?C0275:
 	RET
 ; END OF ir_holdchk
 
 ;--------------------------------------------------------------- ?PR?back_guard?MAIN
 back_guard:
 	USING	0
-			; SOURCE LINE # 1982
-			; SOURCE LINE # 1983
-			; SOURCE LINE # 1984
+			; SOURCE LINE # 2166
+			; SOURCE LINE # 2167
+			; SOURCE LINE # 2168
+	JB   	av_mnv,?C0287
+?C0286:
+			; SOURCE LINE # 2171
 	MOV  	A,mode
-	JNZ  	?C0260
-?C0259:
-			; SOURCE LINE # 1987
+	JNZ  	?C0287
+?C0288:
+			; SOURCE LINE # 2174
 	MOV  	A,cur_act
 	XRL  	A,#02H
-	JZ   	?C0261
-			; SOURCE LINE # 1988
+	JZ   	?C0289
+			; SOURCE LINE # 2175
 	CLR  	back_on
 	RET
-			; SOURCE LINE # 1990
-?C0261:
-			; SOURCE LINE # 1992
-	JB   	back_on,?C0262
-			; SOURCE LINE # 1993
+			; SOURCE LINE # 2177
+?C0289:
+			; SOURCE LINE # 2179
+	JB   	back_on,?C0290
+			; SOURCE LINE # 2180
 	SETB 	back_on
-			; SOURCE LINE # 1994
+			; SOURCE LINE # 2181
 	LCALL	tick_get
 	MOV  	back_t0,R6
 	MOV  	back_t0+01H,R7
 	RET
-			; SOURCE LINE # 1996
-?C0262:
-			; SOURCE LINE # 1998
+			; SOURCE LINE # 2183
+?C0290:
+			; SOURCE LINE # 2185
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -2488,73 +2695,87 @@ back_guard:
 	SUBB 	A,#030H
 	MOV  	A,R6
 	SUBB 	A,#075H
-	JC   	?C0260
-?C0263:
-			; SOURCE LINE # 2002
+	JC   	?C0287
+?C0291:
+			; SOURCE LINE # 2189
 	CLR  	back_on
-			; SOURCE LINE # 2003
-			; SOURCE LINE # 2004
-	LCALL	L?0423
-			; SOURCE LINE # 2005
+			; SOURCE LINE # 2190
+	CLR  	A
+	MOV  	cur_act,A
+			; SOURCE LINE # 2191
+	MOV  	R5,A
+	MOV  	R7,A
+	LCALL	_motor_set_core
+			; SOURCE LINE # 2192
 	LCALL	show_state
-			; SOURCE LINE # 2007
-			; SOURCE LINE # 2008
-	LCALL	L?0421
-			; SOURCE LINE # 2009
+			; SOURCE LINE # 2194
+			; SOURCE LINE # 2195
+	LCALL	L?0435
+			; SOURCE LINE # 2196
 	MOV  	R7,#018H
 	LCALL	_beep
-			; SOURCE LINE # 2010
-?C0260:
+			; SOURCE LINE # 2197
+?C0287:
 	RET
 ; END OF back_guard
 
 ;--------------------------------------------------------------- ?PR?prox_beep?MAIN
 prox_beep:
 	USING	0
-			; SOURCE LINE # 2024
-			; SOURCE LINE # 2025
-			; SOURCE LINE # 2028
+			; SOURCE LINE # 2211
+			; SOURCE LINE # 2212
+			; SOURCE LINE # 2215
+	JNB  	av_mnv,$ + 6H
+	LJMP 	?C0293
+?C0292:
+			; SOURCE LINE # 2218
 	LCALL	avoid_off
 	JC   	$ + 5H
-	LJMP 	?C0265
-?C0264:
-			; SOURCE LINE # 2030
+	LJMP 	?C0293
+?C0294:
+			; SOURCE LINE # 2221
+	MOV  	A,mode
+	XRL  	A,#01H
+	JNZ  	$ + 5H
+	LJMP 	?C0293
+?C0295:
+			; SOURCE LINE # 2224
 	MOV  	A,mode
 	XRL  	A,#03H
 	JNZ  	$ + 5H
-	LJMP 	?C0265
+	LJMP 	?C0293
 	MOV  	A,mode
 	XRL  	A,#02H
 	JNZ  	$ + 5H
-	LJMP 	?C0265
-?C0266:
-			; SOURCE LINE # 2034
+	LJMP 	?C0293
+?C0296:
+			; SOURCE LINE # 2228
 	MOV  	A,cur_act
-	CJNE 	A,#02H,?C0268
-			; SOURCE LINE # 2035
+	CJNE 	A,#02H,?C0298
+			; SOURCE LINE # 2229
 	CLR  	prox_moving
-			; SOURCE LINE # 2036
+			; SOURCE LINE # 2230
 	CLR  	prox_hold
 	RET
-			; SOURCE LINE # 2038
-?C0268:
-			; SOURCE LINE # 2041
+			; SOURCE LINE # 2232
+?C0298:
+			; SOURCE LINE # 2235
 	MOV  	A,cur_act
-	JNZ  	?C0269
-			; SOURCE LINE # 2042
-	JNB  	prox_moving,?C0270
-			; SOURCE LINE # 2043
+	JNZ  	?C0299
+			; SOURCE LINE # 2236
+	JNB  	prox_moving,?C0300
+			; SOURCE LINE # 2237
 	CLR  	prox_moving
-			; SOURCE LINE # 2044
+			; SOURCE LINE # 2238
 	SETB 	prox_hold
-			; SOURCE LINE # 2045
+			; SOURCE LINE # 2239
 	LCALL	tick_get
 	MOV  	prox_stop_t,R6
 	MOV  	prox_stop_t+01H,R7
-			; SOURCE LINE # 2046
-?C0270:
-			; SOURCE LINE # 2047
-	JNB  	prox_hold,?C0271
+			; SOURCE LINE # 2240
+?C0300:
+			; SOURCE LINE # 2241
+	JNB  	prox_hold,?C0301
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -2568,58 +2789,58 @@ prox_beep:
 	SUBB 	A,#020H
 	MOV  	A,R6
 	SUBB 	A,#04EH
-	JC   	?C0271
-			; SOURCE LINE # 2048
+	JC   	?C0301
+			; SOURCE LINE # 2242
 	CLR  	prox_hold
-?C0271:
-			; SOURCE LINE # 2049
-	JB   	prox_hold,?C0273
+?C0301:
+			; SOURCE LINE # 2243
+	JB   	prox_hold,?C0303
 	RET
-?C0269:
-			; SOURCE LINE # 2052
+?C0299:
+			; SOURCE LINE # 2246
 	SETB 	prox_moving
-			; SOURCE LINE # 2053
+			; SOURCE LINE # 2247
 	CLR  	prox_hold
-			; SOURCE LINE # 2054
-?C0273:
-			; SOURCE LINE # 2056
+			; SOURCE LINE # 2248
+?C0303:
+			; SOURCE LINE # 2250
 	LCALL	us_read
 	MOV  	R6,#00H
-			; SOURCE LINE # 2057
+			; SOURCE LINE # 2251
 	CLR  	C
 	MOV  	A,R7
-	SUBB 	A,#0CH
+	SUBB 	A,#0EH
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0265
-?C0274:
-			; SOURCE LINE # 2060
+	JNC  	?C0293
+?C0304:
+			; SOURCE LINE # 2254
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#03H
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0275
+	JNC  	?C0305
 	MOV  	A,cur_act
-	JZ   	?C0275
-			; SOURCE LINE # 2062
+	JZ   	?C0305
+			; SOURCE LINE # 2256
 	MOV  	R7,#0C8H
-	SJMP 	?C0414
-			; SOURCE LINE # 2064
-?C0275:
-			; SOURCE LINE # 2070
+	SJMP 	?C0428
+			; SOURCE LINE # 2258
+?C0305:
+			; SOURCE LINE # 2264
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,#03H
 	MOV  	A,R6
 	SUBB 	A,#00H
-	JNC  	?C0276
-			; SOURCE LINE # 2071
+	JNC  	?C0306
+			; SOURCE LINE # 2265
 	MOV  	R2,#03H
 	MOV  	R3,#0E8H
-	SJMP 	?C0277
-?C0276:
-			; SOURCE LINE # 2073
+	SJMP 	?C0307
+?C0306:
+			; SOURCE LINE # 2267
 	MOV  	A,R7
 	ADD  	A,#0FDH
 	MOV  	R7,A
@@ -2632,8 +2853,8 @@ prox_beep:
 	MOV  	A,R6
 	ADDC 	A,#03H
 	MOV  	R2,A
-?C0277:
-			; SOURCE LINE # 2074
+?C0307:
+			; SOURCE LINE # 2268
 	LCALL	tick_get
 	CLR  	C
 	MOV  	A,R7
@@ -2647,30 +2868,30 @@ prox_beep:
 	SUBB 	A,R3
 	MOV  	A,R6
 	SUBB 	A,R2
-	JC   	?C0265
-?C0278:
-			; SOURCE LINE # 2076
+	JC   	?C0293
+?C0308:
+			; SOURCE LINE # 2270
 	LCALL	tick_get
 	MOV  	prox_t,R6
 	MOV  	prox_t+01H,R7
-			; SOURCE LINE # 2078
+			; SOURCE LINE # 2272
 	MOV  	R7,#018H
-?C0414:
+?C0428:
 	LCALL	_beep
-			; SOURCE LINE # 2079
-?C0265:
+			; SOURCE LINE # 2273
+?C0293:
 	RET
 ; END OF prox_beep
 
 ;--------------------------------------------------------------- ?PR?rec_halt?MAIN
 rec_halt:
 	USING	0
-			; SOURCE LINE # 2092
-			; SOURCE LINE # 2093
-			; SOURCE LINE # 2094
+			; SOURCE LINE # 2286
+			; SOURCE LINE # 2287
+			; SOURCE LINE # 2288
 	CLR  	A
 	MOV  	cur_act,A
-			; SOURCE LINE # 2095
+			; SOURCE LINE # 2289
 	MOV  	R5,A
 	MOV  	R7,A
 	LJMP 	_motor_set_core
@@ -2679,31 +2900,31 @@ rec_halt:
 ;--------------------------------------------------------------- ?PR?rec_commit?MAIN
 rec_commit:
 	USING	0
-			; SOURCE LINE # 2102
-			; SOURCE LINE # 2103
-			; SOURCE LINE # 2106
+			; SOURCE LINE # 2296
+			; SOURCE LINE # 2297
+			; SOURCE LINE # 2300
 	MOV  	A,pack
 	ANL  	A,#0F0H
-	JNZ  	?C0280
+	JNZ  	?C0310
 	MOV  	A,recn
-	JNZ  	?C0280
-			; SOURCE LINE # 2107
-			; SOURCE LINE # 2108
-	SJMP 	?C0415
-			; SOURCE LINE # 2109
-?C0280:
-			; SOURCE LINE # 2111
+	JNZ  	?C0310
+			; SOURCE LINE # 2301
+			; SOURCE LINE # 2302
+	SJMP 	?C0429
+			; SOURCE LINE # 2303
+?C0310:
+			; SOURCE LINE # 2305
 	MOV  	A,recn
 	CLR  	C
 	SUBB 	A,#050H
-	JC   	?C0282
-			; SOURCE LINE # 2112
+	JC   	?C0312
+			; SOURCE LINE # 2306
 	SETB 	recfull
-			; SOURCE LINE # 2113
+			; SOURCE LINE # 2307
 	RET
-			; SOURCE LINE # 2114
-?C0282:
-			; SOURCE LINE # 2116
+			; SOURCE LINE # 2308
+?C0312:
+			; SOURCE LINE # 2310
 	MOV  	A,recn
 	MOV  	R5,A
 	MOV  	R4,#00H
@@ -2719,118 +2940,118 @@ rec_commit:
 	ADDC 	A,R6
 	MOV  	R5,AR7
 	MOV  	R4,A
-			; SOURCE LINE # 2117
+			; SOURCE LINE # 2311
 	MOV  	DPL,R5
 	MOV  	DPH,A
 	MOV  	A,pack
 	MOVX 	@DPTR,A
-			; SOURCE LINE # 2118
+			; SOURCE LINE # 2312
 	INC  	DPTR
 	MOV  	A,cur_dur+01H
 	MOVX 	@DPTR,A
-			; SOURCE LINE # 2119
+			; SOURCE LINE # 2313
 	MOV  	A,cur_dur
 	MOV  	DPL,R5
 	MOV  	DPH,R4
 	INC  	DPTR
 	INC  	DPTR
 	MOVX 	@DPTR,A
-			; SOURCE LINE # 2121
+			; SOURCE LINE # 2315
 	INC  	recn
-			; SOURCE LINE # 2122
+			; SOURCE LINE # 2316
 	MOV  	A,recn
 	CLR  	C
 	SUBB 	A,#050H
-	JC   	?C0283
-			; SOURCE LINE # 2123
+	JC   	?C0313
+			; SOURCE LINE # 2317
 	SETB 	recfull
-?C0283:
-			; SOURCE LINE # 2125
+?C0313:
+			; SOURCE LINE # 2319
 	CLR  	A
-?C0415:
+?C0429:
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2126
+			; SOURCE LINE # 2320
 	SETB 	C
-			; SOURCE LINE # 2127
-?C0281:
+			; SOURCE LINE # 2321
+?C0311:
 	RET
 ; END OF rec_commit
 
 ;--------------------------------------------------------------- ?PR?rec_err?MAIN
 rec_err:
 	USING	0
-			; SOURCE LINE # 2130
-			; SOURCE LINE # 2131
-			; SOURCE LINE # 2132
+			; SOURCE LINE # 2324
+			; SOURCE LINE # 2325
+			; SOURCE LINE # 2326
 	MOV  	R7,#061H
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 2133
-			; SOURCE LINE # 2134
-	LCALL	L?0421
-			; SOURCE LINE # 2135
+			; SOURCE LINE # 2327
+			; SOURCE LINE # 2328
+	LCALL	L?0435
+			; SOURCE LINE # 2329
 	LCALL	d_20ms
-			; SOURCE LINE # 2136
-			; SOURCE LINE # 2137
-	LCALL	L?0421
-			; SOURCE LINE # 2138
+			; SOURCE LINE # 2330
+			; SOURCE LINE # 2331
+	LCALL	L?0435
+			; SOURCE LINE # 2332
 	LCALL	d_20ms
-			; SOURCE LINE # 2139
+			; SOURCE LINE # 2333
 	LJMP 	show_state
 ; END OF rec_err
 
 ;--------------------------------------------------------------- ?PR?rec_fullstop?MAIN
 rec_fullstop:
 	USING	0
-			; SOURCE LINE # 2144
-			; SOURCE LINE # 2145
-			; SOURCE LINE # 2148
+			; SOURCE LINE # 2338
+			; SOURCE LINE # 2339
+			; SOURCE LINE # 2342
 	CLR  	recon
-			; SOURCE LINE # 2149
+			; SOURCE LINE # 2343
 	CLR  	A
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2150
+			; SOURCE LINE # 2344
 	LCALL	rec_halt
-			; SOURCE LINE # 2152
+			; SOURCE LINE # 2346
 	CLR  	A
-	MOV  	i?4370,A
-?C0285:
-			; SOURCE LINE # 2153
+	MOV  	i?4571,A
+?C0315:
+			; SOURCE LINE # 2347
 	MOV  	R7,#071H
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 2154
+			; SOURCE LINE # 2348
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2155
+			; SOURCE LINE # 2349
 	LCALL	d_20ms
-			; SOURCE LINE # 2156
-	INC  	i?4370
-	MOV  	A,i?4370
+			; SOURCE LINE # 2350
+	INC  	i?4571
+	MOV  	A,i?4571
 	CLR  	C
 	SUBB 	A,#014H
-	JC   	?C0285
-?C0286:
-			; SOURCE LINE # 2157
+	JC   	?C0315
+?C0316:
+			; SOURCE LINE # 2351
 	LJMP 	show_state
 ; END OF rec_fullstop
 
 ;--------------------------------------------------------------- ?PR?rec_sample?MAIN
 rec_sample:
 	USING	0
-			; SOURCE LINE # 2166
-			; SOURCE LINE # 2167
-			; SOURCE LINE # 2171
-	JNB  	recfull,?C0289
-			; SOURCE LINE # 2172
+			; SOURCE LINE # 2360
+			; SOURCE LINE # 2361
+			; SOURCE LINE # 2365
+	JNB  	recfull,?C0319
+			; SOURCE LINE # 2366
 	LJMP 	rec_fullstop
-			; SOURCE LINE # 2174
-?C0289:
-			; SOURCE LINE # 2176
+			; SOURCE LINE # 2368
+?C0319:
+			; SOURCE LINE # 2370
 	LCALL	ms10_get
-			; SOURCE LINE # 2177
+			; SOURCE LINE # 2371
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,samp+01H
@@ -2838,14 +3059,14 @@ rec_sample:
 	MOV  	A,R6
 	SUBB 	A,samp
 	MOV  	R4,A
-			; SOURCE LINE # 2178
+			; SOURCE LINE # 2372
 	ORL  	A,R5
-	JZ   	?C0290
-?C0291:
-			; SOURCE LINE # 2180
+	JZ   	?C0320
+?C0321:
+			; SOURCE LINE # 2374
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
-			; SOURCE LINE # 2182
+			; SOURCE LINE # 2376
 	MOV  	A,cur_act
 	SWAP 	A
 	ANL  	A,#0F0H
@@ -2854,79 +3075,79 @@ rec_sample:
 	ANL  	A,#0FH
 	ORL  	A,R7
 	MOV  	R1,A
-			; SOURCE LINE # 2184
-	CJNE 	A,pack,?C0292
-			; SOURCE LINE # 2185
+			; SOURCE LINE # 2378
+	CJNE 	A,pack,?C0322
+			; SOURCE LINE # 2379
 	MOV  	A,cur_dur+01H
 	ADD  	A,R5
 	MOV  	R7,A
 	MOV  	A,cur_dur
 	ADDC 	A,R4
 	MOV  	R6,A
-			; SOURCE LINE # 2186
+			; SOURCE LINE # 2380
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,cur_dur+01H
 	MOV  	A,R6
 	SUBB 	A,cur_dur
-	JNC  	?C0293
-			; SOURCE LINE # 2187
-	SJMP 	?C0416
-			; SOURCE LINE # 2189
-?C0293:
-			; SOURCE LINE # 2190
+	JNC  	?C0323
+			; SOURCE LINE # 2381
+	SJMP 	?C0430
+			; SOURCE LINE # 2383
+?C0323:
+			; SOURCE LINE # 2384
 	MOV  	cur_dur,R6
 	MOV  	cur_dur+01H,R7
-			; SOURCE LINE # 2191
+			; SOURCE LINE # 2385
 	MOV  	A,cur_dur
 	CLR  	C
 	SUBB 	A,#0BH
 	CLR  	A
 	SUBB 	A,#00H
-	JC   	?C0290
-			; SOURCE LINE # 2192
-?C0416:
+	JC   	?C0320
+			; SOURCE LINE # 2386
+?C0430:
 	LJMP 	rec_commit
-			; SOURCE LINE # 2194
-?C0292:
-			; SOURCE LINE # 2197
+			; SOURCE LINE # 2388
+?C0322:
+			; SOURCE LINE # 2391
 	LCALL	rec_commit
-	JNC  	?C0290
-			; SOURCE LINE # 2198
+	JNC  	?C0320
+			; SOURCE LINE # 2392
 	MOV  	pack,R1
-			; SOURCE LINE # 2199
-?C0290:
+			; SOURCE LINE # 2393
+?C0320:
 	RET
 ; END OF rec_sample
 
 ;--------------------------------------------------------------- ?PR?rec_enter?MAIN
 rec_enter:
 	USING	0
-			; SOURCE LINE # 2202
-			; SOURCE LINE # 2203
-			; SOURCE LINE # 2204
+			; SOURCE LINE # 2396
+			; SOURCE LINE # 2397
+			; SOURCE LINE # 2398
 	LCALL	rec_halt
-			; SOURCE LINE # 2205
+			; SOURCE LINE # 2399
 	CLR  	A
 	MOV  	recn,A
-			; SOURCE LINE # 2206
+			; SOURCE LINE # 2400
 	CLR  	recfull
-			; SOURCE LINE # 2207
+			; SOURCE LINE # 2401
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2208
+			; SOURCE LINE # 2402
 	LCALL	ms10_get
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
-			; SOURCE LINE # 2209
+			; SOURCE LINE # 2403
 	MOV  	A,gear
 	ANL  	A,#0FH
 	MOV  	pack,A
-			; SOURCE LINE # 2210
+			; SOURCE LINE # 2404
 	SETB 	recon
-			; SOURCE LINE # 2211
+			; SOURCE LINE # 2405
 	LCALL	show_state
-			; SOURCE LINE # 2212
+			; SOURCE LINE # 2406
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF rec_enter
@@ -2934,29 +3155,29 @@ rec_enter:
 ;--------------------------------------------------------------- ?PR?rec_exit?MAIN
 rec_exit:
 	USING	0
-			; SOURCE LINE # 2216
-			; SOURCE LINE # 2217
-			; SOURCE LINE # 2218
+			; SOURCE LINE # 2410
+			; SOURCE LINE # 2411
+			; SOURCE LINE # 2412
 	MOV  	A,cur_dur+01H
 	ORL  	A,cur_dur
-	JZ   	?C0297
-			; SOURCE LINE # 2219
+	JZ   	?C0327
+			; SOURCE LINE # 2413
 	LCALL	rec_commit
-?C0297:
-			; SOURCE LINE # 2220
+?C0327:
+			; SOURCE LINE # 2414
 	CLR  	recon
-			; SOURCE LINE # 2221
+			; SOURCE LINE # 2415
 	CLR  	A
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2222
+			; SOURCE LINE # 2416
 	LCALL	show_state
-			; SOURCE LINE # 2223
+			; SOURCE LINE # 2417
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2224
+			; SOURCE LINE # 2418
 	LCALL	d_20ms
-			; SOURCE LINE # 2225
+			; SOURCE LINE # 2419
 	MOV  	R7,#028H
 	LJMP 	_beep
 ; END OF rec_exit
@@ -2964,64 +3185,64 @@ rec_exit:
 ;--------------------------------------------------------------- ?PR?rec_key?MAIN
 rec_key:
 	USING	0
-			; SOURCE LINE # 2229
-			; SOURCE LINE # 2230
-			; SOURCE LINE # 2231
-	JNB  	recon,?C0299
+			; SOURCE LINE # 2423
+			; SOURCE LINE # 2424
+			; SOURCE LINE # 2425
+	JNB  	recon,?C0329
 	LJMP 	rec_exit
-?C0299:
-			; SOURCE LINE # 2232
+?C0329:
+			; SOURCE LINE # 2426
 	LCALL	rec_enter
-			; SOURCE LINE # 2233
-?C0301:
+			; SOURCE LINE # 2427
+?C0331:
 	RET
 ; END OF rec_key
 
 ;--------------------------------------------------------------- ?PR?clr_key?MAIN
 clr_key:
 	USING	0
-			; SOURCE LINE # 2237
-			; SOURCE LINE # 2238
-			; SOURCE LINE # 2239
+			; SOURCE LINE # 2431
+			; SOURCE LINE # 2432
+			; SOURCE LINE # 2433
 	MOV  	A,mode
 	XRL  	A,#03H
-	JZ   	?C0303
-?C0302:
-			; SOURCE LINE # 2241
+	JZ   	?C0333
+?C0332:
+			; SOURCE LINE # 2435
 	MOV  	A,cur_act
-	JNZ  	?C0303
-?C0304:
-			; SOURCE LINE # 2244
+	JNZ  	?C0333
+?C0334:
+			; SOURCE LINE # 2438
 	CLR  	recon
-			; SOURCE LINE # 2245
+			; SOURCE LINE # 2439
 	CLR  	A
 	MOV  	recn,A
-			; SOURCE LINE # 2246
+			; SOURCE LINE # 2440
 	CLR  	recfull
-			; SOURCE LINE # 2247
+			; SOURCE LINE # 2441
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2248
+			; SOURCE LINE # 2442
 	LCALL	show_state
-			; SOURCE LINE # 2249
+			; SOURCE LINE # 2443
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2250
+			; SOURCE LINE # 2444
 	LCALL	d_20ms
-			; SOURCE LINE # 2251
+			; SOURCE LINE # 2445
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2252
-?C0303:
+			; SOURCE LINE # 2446
+?C0333:
 	RET
 ; END OF clr_key
 
 ;--------------------------------------------------------------- ?PR?play_load?MAIN
 play_load:
 	USING	0
-			; SOURCE LINE # 2265
-			; SOURCE LINE # 2266
-			; SOURCE LINE # 2267
+			; SOURCE LINE # 2459
+			; SOURCE LINE # 2460
+			; SOURCE LINE # 2461
 	MOV  	A,playidx
 	MOV  	R5,A
 	MOV  	R4,#00H
@@ -3037,12 +3258,12 @@ play_load:
 	ADDC 	A,R6
 	MOV  	R5,AR7
 	MOV  	R4,A
-			; SOURCE LINE # 2268
+			; SOURCE LINE # 2462
 	MOV  	DPL,R5
 	MOV  	DPH,A
 	MOVX 	A,@DPTR
 	MOV  	R3,A
-			; SOURCE LINE # 2271
+			; SOURCE LINE # 2465
 	INC  	DPTR
 	INC  	DPTR
 	MOVX 	A,@DPTR
@@ -3056,41 +3277,41 @@ play_load:
 	MOV  	play_dur,A
 	MOV  	A,R5
 	MOV  	play_dur+01H,A
-			; SOURCE LINE # 2273
+			; SOURCE LINE # 2467
 	MOV  	A,R3
 	ANL  	A,#0FH
 	MOV  	gear,A
-			; SOURCE LINE # 2274
+			; SOURCE LINE # 2468
 	MOV  	A,R3
 	SWAP 	A
 	ANL  	A,#0FH
 	MOV  	cur_act,A
-			; SOURCE LINE # 2276
+			; SOURCE LINE # 2470
 	MOV  	R5,gear
 	MOV  	R7,A
 	LCALL	_motor_set_core
-			; SOURCE LINE # 2277
+			; SOURCE LINE # 2471
 	LCALL	ms10_get
 	MOV  	play_t0,R6
 	MOV  	play_t0+01H,R7
-			; SOURCE LINE # 2278
+			; SOURCE LINE # 2472
 	RET
 ; END OF play_load
 
 ;--------------------------------------------------------------- ?PR?play_safety?MAIN
 play_safety:
 	USING	0
-			; SOURCE LINE # 2285
-			; SOURCE LINE # 2286
-			; SOURCE LINE # 2289
+			; SOURCE LINE # 2479
+			; SOURCE LINE # 2480
+			; SOURCE LINE # 2483
 	LCALL	ir_det
-	JNC  	?C0306
-			; SOURCE LINE # 2290
+	JNC  	?C0336
+			; SOURCE LINE # 2484
 	RET
-?C0306:
-			; SOURCE LINE # 2292
+?C0336:
+			; SOURCE LINE # 2486
 	LCALL	ms10_get
-			; SOURCE LINE # 2293
+			; SOURCE LINE # 2487
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,samp+01H
@@ -3103,145 +3324,145 @@ play_safety:
 	SUBB 	A,#06H
 	MOV  	A,R4
 	SUBB 	A,#00H
-	JNC  	?C0308
-			; SOURCE LINE # 2294
+	JNC  	?C0338
+			; SOURCE LINE # 2488
 	CLR  	C
 	RET
-?C0308:
-			; SOURCE LINE # 2295
+?C0338:
+			; SOURCE LINE # 2489
 	MOV  	samp,R6
 	MOV  	samp+01H,R7
-			; SOURCE LINE # 2297
+			; SOURCE LINE # 2491
 	LCALL	us_read
 	MOV  	A,R7
 	CLR  	C
 	SUBB 	A,#03H
-	JNC  	?C0309
-			; SOURCE LINE # 2298
+	JNC  	?C0339
+			; SOURCE LINE # 2492
 	RET
-?C0309:
-			; SOURCE LINE # 2299
+?C0339:
+			; SOURCE LINE # 2493
 	CLR  	C
-			; SOURCE LINE # 2300
-?C0307:
+			; SOURCE LINE # 2494
+?C0337:
 	RET
 ; END OF play_safety
 
 ;--------------------------------------------------------------- ?PR?play_exit?MAIN
 play_exit:
 	USING	0
-			; SOURCE LINE # 2303
-			; SOURCE LINE # 2304
-			; SOURCE LINE # 2305
+			; SOURCE LINE # 2497
+			; SOURCE LINE # 2498
+			; SOURCE LINE # 2499
 	LCALL	rec_halt
-			; SOURCE LINE # 2306
+			; SOURCE LINE # 2500
 	CLR  	A
 	MOV  	mode,A
-			; SOURCE LINE # 2307
+			; SOURCE LINE # 2501
 	MOV  	gear,play_gear0
-			; SOURCE LINE # 2308
+			; SOURCE LINE # 2502
 	MOV  	avst,A
-			; SOURCE LINE # 2309
+			; SOURCE LINE # 2503
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 2310
+			; SOURCE LINE # 2504
 	MOV  	playidx,A
-			; SOURCE LINE # 2311
+			; SOURCE LINE # 2505
 	LJMP 	show_state
 ; END OF play_exit
 
 ;--------------------------------------------------------------- ?PR?play_abort?MAIN
 play_abort:
 	USING	0
-			; SOURCE LINE # 2316
-			; SOURCE LINE # 2317
-			; SOURCE LINE # 2318
+			; SOURCE LINE # 2510
+			; SOURCE LINE # 2511
+			; SOURCE LINE # 2512
 	SETB 	playerr
-			; SOURCE LINE # 2319
+			; SOURCE LINE # 2513
 	LCALL	rec_halt
-			; SOURCE LINE # 2320
-			; SOURCE LINE # 2321
-	LCALL	L?0421
-			; SOURCE LINE # 2322
+			; SOURCE LINE # 2514
+			; SOURCE LINE # 2515
+	LCALL	L?0435
+			; SOURCE LINE # 2516
 	MOV  	R7,#018H
 	LCALL	_beep
-			; SOURCE LINE # 2323
+			; SOURCE LINE # 2517
 	LJMP 	play_exit
 ; END OF play_abort
 
 ;--------------------------------------------------------------- ?PR?play_enter?MAIN
 play_enter:
 	USING	0
-			; SOURCE LINE # 2327
-			; SOURCE LINE # 2328
-			; SOURCE LINE # 2329
+			; SOURCE LINE # 2521
+			; SOURCE LINE # 2522
+			; SOURCE LINE # 2523
 	MOV  	A,recn
-	JNZ  	?C0312
-			; SOURCE LINE # 2330
+	JNZ  	?C0342
+			; SOURCE LINE # 2524
 	LJMP 	rec_err
-			; SOURCE LINE # 2332
-?C0312:
-			; SOURCE LINE # 2334
+			; SOURCE LINE # 2526
+?C0342:
+			; SOURCE LINE # 2528
 	MOV  	play_gear0,gear
-			; SOURCE LINE # 2337
+			; SOURCE LINE # 2531
 	CLR  	A
 	MOV  	avst,A
-			; SOURCE LINE # 2338
+			; SOURCE LINE # 2532
 	MOV  	playidx,A
-			; SOURCE LINE # 2339
+			; SOURCE LINE # 2533
 	MOV  	cur_act,A
-			; SOURCE LINE # 2340
+			; SOURCE LINE # 2534
 	MOV  	mode,#03H
-			; SOURCE LINE # 2341
+			; SOURCE LINE # 2535
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 2342
+			; SOURCE LINE # 2536
 	LCALL	play_load
-			; SOURCE LINE # 2343
+			; SOURCE LINE # 2537
 	LCALL	show_mode
-			; SOURCE LINE # 2344
+			; SOURCE LINE # 2538
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2345
-?C0313:
+			; SOURCE LINE # 2539
+?C0343:
 	RET
 ; END OF play_enter
 
 ;--------------------------------------------------------------- ?PR?play_step?MAIN
 play_step:
 	USING	0
-			; SOURCE LINE # 2351
-			; SOURCE LINE # 2352
-			; SOURCE LINE # 2355
+			; SOURCE LINE # 2545
+			; SOURCE LINE # 2546
+			; SOURCE LINE # 2549
 	LCALL	play_safety
-	JNC  	?C0314
-			; SOURCE LINE # 2356
+	JNC  	?C0344
+			; SOURCE LINE # 2550
 	LJMP 	play_abort
-			; SOURCE LINE # 2358
-?C0314:
-			; SOURCE LINE # 2360
+			; SOURCE LINE # 2552
+?C0344:
+			; SOURCE LINE # 2554
 	LCALL	ir_recv_nb
-			; SOURCE LINE # 2361
+			; SOURCE LINE # 2555
 	MOV  	A,irstat
-	JNZ  	?C0316
-			; SOURCE LINE # 2362
+	JNZ  	?C0346
+			; SOURCE LINE # 2556
 	MOV  	A,ir_ib2
-	CJNE 	A,#052H,?C0317
-			; SOURCE LINE # 2363
-	SJMP 	?C0418
-			; SOURCE LINE # 2365
-?C0317:
-			; SOURCE LINE # 2368
+	CJNE 	A,#052H,?C0347
+			; SOURCE LINE # 2557
+	SJMP 	?C0432
+			; SOURCE LINE # 2559
+?C0347:
+			; SOURCE LINE # 2562
 	MOV  	R7,ir_ib2
 	LCALL	_key2act
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0316
-			; SOURCE LINE # 2369
-?C0417:
-	SJMP 	?C0418
-			; SOURCE LINE # 2371
-			; SOURCE LINE # 2372
-?C0316:
-			; SOURCE LINE # 2375
+	JZ   	?C0346
+			; SOURCE LINE # 2563
+?C0431:
+	SJMP 	?C0432
+			; SOURCE LINE # 2565
+			; SOURCE LINE # 2566
+?C0346:
+			; SOURCE LINE # 2569
 	LCALL	ms10_get
 	CLR  	C
 	MOV  	A,R7
@@ -3250,701 +3471,493 @@ play_step:
 	MOV  	A,R6
 	SUBB 	A,play_t0
 	MOV  	R6,A
-			; SOURCE LINE # 2376
+			; SOURCE LINE # 2570
 	CLR  	C
 	MOV  	A,R7
 	SUBB 	A,play_dur+01H
 	MOV  	A,R6
 	SUBB 	A,play_dur
-	JC   	?C0315
-?C0319:
-			; SOURCE LINE # 2379
+	JC   	?C0345
+?C0349:
+			; SOURCE LINE # 2573
 	INC  	playidx
-			; SOURCE LINE # 2380
+			; SOURCE LINE # 2574
 	MOV  	A,playidx
 	CLR  	C
 	SUBB 	A,recn
-	JC   	?C0320
-			; SOURCE LINE # 2381
-?C0418:
+	JC   	?C0350
+			; SOURCE LINE # 2575
+?C0432:
 	LJMP 	play_exit
-			; SOURCE LINE # 2383
-?C0320:
-			; SOURCE LINE # 2384
+			; SOURCE LINE # 2577
+?C0350:
+			; SOURCE LINE # 2578
 	LCALL	play_load
-			; SOURCE LINE # 2385
-?C0315:
+			; SOURCE LINE # 2579
+?C0345:
 	RET
 ; END OF play_step
 
 ;--------------------------------------------------------------- ?PR?play_key?MAIN
 play_key:
 	USING	0
-			; SOURCE LINE # 2389
-			; SOURCE LINE # 2390
-			; SOURCE LINE # 2391
-	JNB  	recon,?C0321
-			; SOURCE LINE # 2392
+			; SOURCE LINE # 2583
+			; SOURCE LINE # 2584
+			; SOURCE LINE # 2585
+	JNB  	recon,?C0351
+			; SOURCE LINE # 2586
 	LCALL	rec_exit
-	SJMP 	?C0322
-?C0321:
-			; SOURCE LINE # 2393
+	SJMP 	?C0352
+?C0351:
+			; SOURCE LINE # 2587
 	MOV  	A,mode
-	CJNE 	A,#03H,?C0322
-			; SOURCE LINE # 2394
+	CJNE 	A,#03H,?C0352
+			; SOURCE LINE # 2588
 	LJMP 	play_exit
-			; SOURCE LINE # 2396
-?C0322:
-			; SOURCE LINE # 2397
+			; SOURCE LINE # 2590
+?C0352:
+			; SOURCE LINE # 2591
 	LCALL	play_enter
-			; SOURCE LINE # 2398
-?C0324:
+			; SOURCE LINE # 2592
+?C0354:
 	RET
 ; END OF play_key
 
 ;--------------------------------------------------------------- ?PR?manual_step?MAIN
 manual_step:
 	USING	0
-			; SOURCE LINE # 2403
-			; SOURCE LINE # 2404
-			; SOURCE LINE # 2405
+			; SOURCE LINE # 2597
+			; SOURCE LINE # 2598
+			; SOURCE LINE # 2599
 	LCALL	ir_recv
-			; SOURCE LINE # 2407
+			; SOURCE LINE # 2601
 	MOV  	A,irstat
-	JNZ  	?C0325
-			; SOURCE LINE # 2408
+	JNZ  	?C0355
+			; SOURCE LINE # 2602
 	LCALL	stamp_now
-			; SOURCE LINE # 2409
+			; SOURCE LINE # 2603
 	MOV  	lastcmd,ir_ib2
-			; SOURCE LINE # 2410
+			; SOURCE LINE # 2604
 	LCALL	do_key
-			; SOURCE LINE # 2411
-	SJMP 	?C0326
-?C0325:
+			; SOURCE LINE # 2605
+	SJMP 	?C0356
+?C0355:
 	MOV  	A,irstat
-	CJNE 	A,#03H,?C0327
-			; SOURCE LINE # 2412
+	CJNE 	A,#03H,?C0357
+			; SOURCE LINE # 2606
 	LCALL	stamp_now
-			; SOURCE LINE # 2413
-	SJMP 	?C0326
-?C0327:
+			; SOURCE LINE # 2607
+	SJMP 	?C0356
+?C0357:
 	MOV  	A,irstat
-	CJNE 	A,#02H,?C0326
-			; SOURCE LINE # 2414
+	CJNE 	A,#02H,?C0356
+			; SOURCE LINE # 2608
 	LCALL	ir_errpr
-			; SOURCE LINE # 2416
-	LCALL	diag_errshow
-			; SOURCE LINE # 2418
-?C0326:
-			; SOURCE LINE # 2423
-	MOV  	A,irstat
-	JNZ  	?C0330
-			; SOURCE LINE # 2424
-	LCALL	diag_keyshow
-?C0330:
-			; SOURCE LINE # 2427
-			; SOURCE LINE # 2428
+			; SOURCE LINE # 2612
+?C0356:
+			; SOURCE LINE # 2621
+			; SOURCE LINE # 2622
 	LJMP 	ir_holdchk
 ; END OF manual_step
 
 ;--------------------------------------------------------------- ?PR?auto_step?MAIN
 auto_step:
 	USING	0
-			; SOURCE LINE # 2436
-			; SOURCE LINE # 2437
-			; SOURCE LINE # 2440
+			; SOURCE LINE # 2630
+			; SOURCE LINE # 2631
+			; SOURCE LINE # 2634
 	LCALL	ir_recv
-			; SOURCE LINE # 2441
+			; SOURCE LINE # 2635
 	MOV  	A,irstat
-	JNZ  	?C0334
-?C0333:
-			; SOURCE LINE # 2444
+	JNZ  	?C0363
+?C0362:
+			; SOURCE LINE # 2638
 	MOV  	A,ir_ib2
-	CJNE 	A,#040H,?C0335
-			; SOURCE LINE # 2445
+	CJNE 	A,#040H,?C0364
+			; SOURCE LINE # 2639
 	CLR  	A
 	MOV  	mode,A
-			; SOURCE LINE # 2446
-			; SOURCE LINE # 2447
-	LCALL	L?0424
-			; SOURCE LINE # 2448
+			; SOURCE LINE # 2640
+	MOV  	cur_act,A
+			; SOURCE LINE # 2641
+	MOV  	R5,A
+	MOV  	R7,A
+	LCALL	_motor_set_core
+			; SOURCE LINE # 2642
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 2449
+			; SOURCE LINE # 2643
 	LCALL	show_state
-			; SOURCE LINE # 2450
+			; SOURCE LINE # 2644
 	MOV  	R7,#028H
 	LJMP 	_beep
-			; SOURCE LINE # 2452
-?C0335:
-			; SOURCE LINE # 2454
+			; SOURCE LINE # 2646
+?C0364:
+			; SOURCE LINE # 2648
 	MOV  	R7,ir_ib2
 	LCALL	_key2mode
-			; SOURCE LINE # 2455
+			; SOURCE LINE # 2649
 	MOV  	A,R7
 	CPL  	A
-	JZ   	?C0336
-			; SOURCE LINE # 2456
+	JZ   	?C0365
+			; SOURCE LINE # 2650
 	MOV  	A,R7
 	XRL  	A,mode
-	JZ   	?C0334
-			; SOURCE LINE # 2457
+	JZ   	?C0363
+			; SOURCE LINE # 2651
 	LJMP 	_mode_goto
-			; SOURCE LINE # 2459
-?C0336:
-			; SOURCE LINE # 2462
+			; SOURCE LINE # 2653
+?C0365:
+			; SOURCE LINE # 2656
 	MOV  	A,ir_ib2
-	CJNE 	A,#01CH,?C0338
-			; SOURCE LINE # 2463
+	CJNE 	A,#01CH,?C0367
+			; SOURCE LINE # 2657
 	LJMP 	avoid_toggle
-			; SOURCE LINE # 2465
-?C0338:
-			; SOURCE LINE # 2467
+			; SOURCE LINE # 2659
+?C0367:
+			; SOURCE LINE # 2661
 	MOV  	A,ir_ib2
-	CJNE 	A,#05AH,?C0339
-			; SOURCE LINE # 2468
+	CJNE 	A,#05AH,?C0368
+			; SOURCE LINE # 2662
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0334
-			; SOURCE LINE # 2469
+	JNC  	?C0363
+			; SOURCE LINE # 2663
 	INC  	gear
-			; SOURCE LINE # 2470
-			; SOURCE LINE # 2471
-			; SOURCE LINE # 2472
-	SJMP 	?C0419
-?C0339:
+			; SOURCE LINE # 2664
+			; SOURCE LINE # 2665
+			; SOURCE LINE # 2666
+	SJMP 	?C0433
+?C0368:
 	MOV  	A,ir_ib2
-	CJNE 	A,#08H,?C0334
-			; SOURCE LINE # 2473
+	CJNE 	A,#08H,?C0363
+			; SOURCE LINE # 2667
 	MOV  	A,gear
 	SETB 	C
 	SUBB 	A,#00H
-	JC   	?C0334
-			; SOURCE LINE # 2474
+	JC   	?C0363
+			; SOURCE LINE # 2668
 	DEC  	gear
-			; SOURCE LINE # 2475
-?C0419:
+			; SOURCE LINE # 2669
+?C0433:
 	LCALL	ml_apply
-			; SOURCE LINE # 2476
-			; SOURCE LINE # 2477
-			; SOURCE LINE # 2478
-?C0334:
+			; SOURCE LINE # 2670
+			; SOURCE LINE # 2671
+			; SOURCE LINE # 2672
+?C0363:
 	RET
 ; END OF auto_step
 
 ;--------------------------------------------------------------- ?PR?ml_apply?MAIN
 ml_apply:
 	USING	0
-			; SOURCE LINE # 2485
-			; SOURCE LINE # 2486
-			; SOURCE LINE # 2488
+			; SOURCE LINE # 2679
+			; SOURCE LINE # 2680
+			; SOURCE LINE # 2682
 	MOV  	R7,#028H
 	LCALL	_beep
-			; SOURCE LINE # 2490
+			; SOURCE LINE # 2684
 	MOV  	A,mode
-	JZ   	?C0344
-			; SOURCE LINE # 2491
+	JZ   	?C0373
+			; SOURCE LINE # 2685
 	LJMP 	show_mode
-			; SOURCE LINE # 2494
-?C0344:
-			; SOURCE LINE # 2496
+			; SOURCE LINE # 2688
+?C0373:
+			; SOURCE LINE # 2690
 	MOV  	A,gear
-	JZ   	?C0347
+	JZ   	?C0376
 	MOV  	A,cur_act
-	JNZ  	?C0346
-?C0347:
-			; SOURCE LINE # 2497
+	JNZ  	?C0375
+?C0376:
+			; SOURCE LINE # 2691
 	LJMP 	apply_gear_core
-			; SOURCE LINE # 2498
-?C0346:
-			; SOURCE LINE # 2499
+			; SOURCE LINE # 2692
+?C0375:
+			; SOURCE LINE # 2693
 	MOV  	R5,gear
-			; SOURCE LINE # 2500
-	LCALL	L?0427
-			; SOURCE LINE # 2501
-			; SOURCE LINE # 2503
-?C0345:
+			; SOURCE LINE # 2694
+	LCALL	L?0438
+			; SOURCE LINE # 2695
+			; SOURCE LINE # 2697
+?C0374:
 	RET
 ; END OF ml_apply
-
-;--------------------------------------------------------------- ?PR?diag_keyshow?MAIN
-diag_keyshow:
-			; SOURCE LINE # 2515
-			; SOURCE LINE # 2516
-			; SOURCE LINE # 2517
-	MOV  	diag_cmd,ir_ib2
-			; SOURCE LINE # 2518
-	MOV  	diag_on,#01H
-			; SOURCE LINE # 2519
-	CLR  	A
-	MOV  	diag_seq,A
-			; SOURCE LINE # 2520
-	RET
-; END OF diag_keyshow
-
-;--------------------------------------------------------------- ?PR?diag_errshow?MAIN
-diag_errshow:
-	USING	0
-			; SOURCE LINE # 2522
-			; SOURCE LINE # 2523
-			; SOURCE LINE # 2524
-			; SOURCE LINE # 2525
-	LCALL	L?0421
-			; SOURCE LINE # 2526
-	LCALL	d_20ms
-			; SOURCE LINE # 2527
-	LCALL	d_20ms
-			; SOURCE LINE # 2528
-	LCALL	d_20ms
-			; SOURCE LINE # 2529
-	MOV  	R7,#018H
-	LCALL	_beep
-			; SOURCE LINE # 2530
-	MOV  	diag_on,#02H
-			; SOURCE LINE # 2531
-	CLR  	A
-	MOV  	diag_seq,A
-			; SOURCE LINE # 2532
-	RET
-; END OF diag_errshow
-
-;--------------------------------------------------------------- ?PR?diag_dly?MAIN
-L?0425:
-	USING	0
-L?0426:
-	MOV  	R7,#028H
-	LCALL	_beep
-diag_dly:
-	USING	0
-			; SOURCE LINE # 2534
-			; SOURCE LINE # 2535
-			; SOURCE LINE # 2537
-	CLR  	A
-	MOV  	R4,A
-?C0351:
-			; SOURCE LINE # 2538
-	LCALL	d_20ms
-	INC  	R4
-	CJNE 	R4,#08H,?C0351
-			; SOURCE LINE # 2539
-?C0354:
-	RET
-; END OF diag_dly
-
-;--------------------------------------------------------------- ?PR?diag_getval?MAIN
-diag_getval:
-	USING	0
-			; SOURCE LINE # 2541
-			; SOURCE LINE # 2542
-			; SOURCE LINE # 2543
-	MOV  	A,diag_on
-	XRL  	A,#02H
-	JZ   	?C0355
-			; SOURCE LINE # 2544
-	MOV  	R7,diag_cmd
-	RET
-?C0355:
-			; SOURCE LINE # 2545
-	MOV  	A,diag_seq
-	ANL  	A,#06H
-	ADD  	A,#0FEH
-	JZ   	?C0359
-	ADD  	A,#0FEH
-	JZ   	?C0360
-	ADD  	A,#04H
-	JNZ  	?C0361
-			; SOURCE LINE # 2546
-?C0358:
-	MOV  	R7,ir_ledlo
-	RET
-			; SOURCE LINE # 2547
-?C0359:
-	MOV  	R7,ir_ledhi
-	RET
-			; SOURCE LINE # 2548
-?C0360:
-	MOV  	R7,ir_ib2
-	RET
-			; SOURCE LINE # 2549
-?C0361:
-	MOV  	R7,ir_ib3
-			; SOURCE LINE # 2550
-			; SOURCE LINE # 2551
-?C0356:
-	RET
-; END OF diag_getval
-
-;--------------------------------------------------------------- ?PR?diag_update?MAIN
-diag_update:
-	USING	0
-			; SOURCE LINE # 2553
-			; SOURCE LINE # 2554
-			; SOURCE LINE # 2560
-	MOV  	A,diag_on
-	JNZ  	?C0362
-			; SOURCE LINE # 2561
-	LCALL	tick_get
-	MOV  	diag_t0,R6
-	MOV  	diag_t0+01H,R7
-	RET
-			; SOURCE LINE # 2563
-?C0362:
-			; SOURCE LINE # 2564
-	LCALL	tick_get
-	CLR  	C
-	MOV  	A,R7
-	SUBB 	A,diag_t0+01H
-	MOV  	R7,A
-	MOV  	A,R6
-	SUBB 	A,diag_t0
-	MOV  	R6,A
-	CLR  	C
-	MOV  	A,R7
-	SUBB 	A,#070H
-	MOV  	A,R6
-	SUBB 	A,#017H
-	JC   	?C0364
-			; SOURCE LINE # 2565
-	LCALL	tick_get
-	MOV  	diag_t0,R6
-	MOV  	diag_t0+01H,R7
-			; SOURCE LINE # 2566
-	MOV  	A,diag_seq
-	INC  	A
-	ANL  	A,#07H
-	MOV  	diag_seq,A
-			; SOURCE LINE # 2567
-?C0364:
-			; SOURCE LINE # 2569
-	LCALL	diag_getval
-			; SOURCE LINE # 2570
-	MOV  	A,diag_seq
-	JNB  	ACC.0,?C0365
-			; SOURCE LINE # 2571
-	ANL  	AR7,#0FH
-	SJMP 	?C0366
-?C0365:
-			; SOURCE LINE # 2573
-	MOV  	A,R7
-	SWAP 	A
-	ANL  	A,#0FH
-	MOV  	R7,A
-?C0366:
-			; SOURCE LINE # 2574
-	MOV  	A,R7
-	MOV  	DPTR,#hex_seg
-	MOVC 	A,@A+DPTR
-	MOV  	R7,A
-	LCALL	_d3_mix
-	MOV  	P2,R7
-			; SOURCE LINE # 2575
-?C0363:
-	RET
-; END OF diag_update
 
 ;--------------------------------------------------------------- ?PR?init_all?MAIN
 init_all:
 	USING	0
-			; SOURCE LINE # 2585
-			; SOURCE LINE # 2586
-			; SOURCE LINE # 2588
+			; SOURCE LINE # 2782
+			; SOURCE LINE # 2783
+			; SOURCE LINE # 2785
 	CLR  	A
 	MOV  	pwm_div,A
-			; SOURCE LINE # 2589
+			; SOURCE LINE # 2786
 	MOV  	pwm_cnt,A
-			; SOURCE LINE # 2590
+			; SOURCE LINE # 2787
 	MOV  	buz_left,A
-			; SOURCE LINE # 2591
+			; SOURCE LINE # 2788
 	SETB 	buz_quiet
-			; SOURCE LINE # 2592
+			; SOURCE LINE # 2789
 	MOV  	dirbits,A
-			; SOURCE LINE # 2593
+			; SOURCE LINE # 2790
 	MOV  	duty_a,A
-			; SOURCE LINE # 2594
+			; SOURCE LINE # 2791
 	MOV  	duty_b,A
-			; SOURCE LINE # 2595
+			; SOURCE LINE # 2792
 	MOV  	gear,A
-			; SOURCE LINE # 2596
+			; SOURCE LINE # 2793
 	MOV  	klast,A
-			; SOURCE LINE # 2597
+			; SOURCE LINE # 2794
 	MOV  	cur_act,A
-			; SOURCE LINE # 2598
+			; SOURCE LINE # 2795
 	CLR  	back_on
-			; SOURCE LINE # 2599
+			; SOURCE LINE # 2796
 	MOV  	back_t0,A
 	MOV  	back_t0+01H,A
-			; SOURCE LINE # 2600
+			; SOURCE LINE # 2797
 	MOV  	prox_t,A
 	MOV  	prox_t+01H,A
-			; SOURCE LINE # 2601
+			; SOURCE LINE # 2798
 	CLR  	prox_moving
-			; SOURCE LINE # 2602
+			; SOURCE LINE # 2799
 	CLR  	prox_hold
-			; SOURCE LINE # 2603
+			; SOURCE LINE # 2800
 	MOV  	prox_stop_t,A
 	MOV  	prox_stop_t+01H,A
-			; SOURCE LINE # 2604
+			; SOURCE LINE # 2801
 	MOV  	av_beep_n,A
-			; SOURCE LINE # 2605
+			; SOURCE LINE # 2802
 	CLR  	av_clear_on
-			; SOURCE LINE # 2606
+			; SOURCE LINE # 2803
 	MOV  	av_clear_t,A
 	MOV  	av_clear_t+01H,A
-			; SOURCE LINE # 2609
+			; SOURCE LINE # 2806
 	MOV  	tick_l,A
-			; SOURCE LINE # 2610
+			; SOURCE LINE # 2807
 	MOV  	tick_h,A
-			; SOURCE LINE # 2611
+			; SOURCE LINE # 2808
 	MOV  	irstat,#01H
-			; SOURCE LINE # 2612
+			; SOURCE LINE # 2809
 	MOV  	lastcmd,#0FFH
-			; SOURCE LINE # 2613
+			; SOURCE LINE # 2810
 	MOV  	lastt,A
 	MOV  	lastt+01H,A
-			; SOURCE LINE # 2614
+			; SOURCE LINE # 2811
 	MOV  	last_err,A
 	MOV  	last_err+01H,A
-			; SOURCE LINE # 2615
+			; SOURCE LINE # 2812
 	MOV  	ir_ledlo,A
-			; SOURCE LINE # 2616
+			; SOURCE LINE # 2813
 	MOV  	ir_ledhi,A
-			; SOURCE LINE # 2619
+			; SOURCE LINE # 2816
 	MOV  	mode,A
-			; SOURCE LINE # 2620
+			; SOURCE LINE # 2817
 	SETB 	us_avoid_on
-			; SOURCE LINE # 2621
+			; SOURCE LINE # 2818
 	MOV  	avst,A
-			; SOURCE LINE # 2622
+			; SOURCE LINE # 2819
 	MOV  	av_beep_t,A
 	MOV  	av_beep_t+01H,A
-			; SOURCE LINE # 2625
+			; SOURCE LINE # 2822
 	CLR  	recon
-			; SOURCE LINE # 2626
+			; SOURCE LINE # 2823
 	CLR  	playerr
-			; SOURCE LINE # 2627
+			; SOURCE LINE # 2824
 	CLR  	recfull
-			; SOURCE LINE # 2628
+			; SOURCE LINE # 2825
 	MOV  	ms_div,A
-			; SOURCE LINE # 2629
+			; SOURCE LINE # 2826
 	MOV  	ms10_l,A
-			; SOURCE LINE # 2630
+			; SOURCE LINE # 2827
 	MOV  	ms10_h,A
-			; SOURCE LINE # 2631
+			; SOURCE LINE # 2828
 	MOV  	pack,A
-			; SOURCE LINE # 2632
+			; SOURCE LINE # 2829
 	MOV  	cur_dur,A
 	MOV  	cur_dur+01H,A
-			; SOURCE LINE # 2633
+			; SOURCE LINE # 2830
 	MOV  	samp,A
 	MOV  	samp+01H,A
-			; SOURCE LINE # 2634
+			; SOURCE LINE # 2831
 	MOV  	recn,A
-			; SOURCE LINE # 2635
+			; SOURCE LINE # 2832
 	MOV  	playidx,A
-			; SOURCE LINE # 2636
+			; SOURCE LINE # 2833
 	MOV  	play_dur,A
 	MOV  	play_dur+01H,A
-			; SOURCE LINE # 2637
+			; SOURCE LINE # 2834
 	MOV  	play_t0,A
 	MOV  	play_t0+01H,A
-			; SOURCE LINE # 2638
+			; SOURCE LINE # 2835
 	MOV  	play_gear0,A
-			; SOURCE LINE # 2641
-	MOV  	diag_on,A
-			; SOURCE LINE # 2642
-	MOV  	diag_seq,A
-			; SOURCE LINE # 2643
-	MOV  	diag_cmd,A
-			; SOURCE LINE # 2647
+			; SOURCE LINE # 2844
 	MOV  	P0,#0C0H
-			; SOURCE LINE # 2648
+			; SOURCE LINE # 2845
 	MOV  	P1,#0FFH
-			; SOURCE LINE # 2649
+			; SOURCE LINE # 2846
 	MOV  	R7,#03H
 	LCALL	_d3_mix
 	MOV  	P2,R7
-			; SOURCE LINE # 2650
+			; SOURCE LINE # 2847
 	MOV  	P3,#0FFH
-			; SOURCE LINE # 2653
+			; SOURCE LINE # 2850
 	LCALL	us_init
-			; SOURCE LINE # 2659
-	JNB  	IR_AVOID,?C0367
-			; SOURCE LINE # 2660
+			; SOURCE LINE # 2863
 	CLR  	A
 	MOV  	ir_inv,A
-	SJMP 	?C0368
-?C0367:
-			; SOURCE LINE # 2662
-	MOV  	ir_inv,#01H
-?C0368:
-			; SOURCE LINE # 2665
+			; SOURCE LINE # 2867
 	MOV  	TMOD,#022H
-			; SOURCE LINE # 2666
+			; SOURCE LINE # 2868
 	MOV  	TH1,#0FDH
-			; SOURCE LINE # 2667
+			; SOURCE LINE # 2869
 	MOV  	TL1,#0FDH
-			; SOURCE LINE # 2668
+			; SOURCE LINE # 2870
 	MOV  	SCON,#050H
-			; SOURCE LINE # 2669
-	CLR  	A
+			; SOURCE LINE # 2871
 	MOV  	PCON,A
-			; SOURCE LINE # 2670
+			; SOURCE LINE # 2872
 	SETB 	TR1
-			; SOURCE LINE # 2672
+			; SOURCE LINE # 2874
 	MOV  	TH0,#0A4H
-			; SOURCE LINE # 2673
+			; SOURCE LINE # 2875
 	MOV  	TL0,#0A4H
-			; SOURCE LINE # 2674
+			; SOURCE LINE # 2876
 	SETB 	ET0
-			; SOURCE LINE # 2675
+			; SOURCE LINE # 2877
 	SETB 	EA
-			; SOURCE LINE # 2676
+			; SOURCE LINE # 2878
 	SETB 	TR0
-			; SOURCE LINE # 2678
+			; SOURCE LINE # 2880
 	LCALL	tick_get
 	MOV  	lastt,R6
 	MOV  	lastt+01H,R7
-			; SOURCE LINE # 2679
+			; SOURCE LINE # 2881
 	LCALL	tick_get
 	MOV  	prox_stop_t,R6
 	MOV  	prox_stop_t+01H,R7
-			; SOURCE LINE # 2681
-	LCALL	apply_gear_core
-			; SOURCE LINE # 2685
-	MOV  	R7,#01H
-	LCALL	_d3_mix
-	MOV  	P2,R7
-			; SOURCE LINE # 2686
-	LCALL	L?0425
-			; SOURCE LINE # 2687
-	LCALL	L?0425
-			; SOURCE LINE # 2688
-	LCALL	L?0426
-			; SOURCE LINE # 2689
-	LJMP 	show_state
+			; SOURCE LINE # 2883
+	LJMP 	apply_gear_core
 ; END OF init_all
 
 ;--------------------------------------------------------------- ?PR?main?MAIN
 main:
 	USING	0
-			; SOURCE LINE # 2767
-			; SOURCE LINE # 2768
-			; SOURCE LINE # 2771
+			; SOURCE LINE # 2969
+			; SOURCE LINE # 2970
+			; SOURCE LINE # 2973
 	LCALL	init_all
-?C0370:
-			; SOURCE LINE # 2773
-			; SOURCE LINE # 2775
-	LCALL	diag_update
-			; SOURCE LINE # 2778
+?C0379:
+			; SOURCE LINE # 2975
+			; SOURCE LINE # 2980
 	MOV  	A,mode
-	CJNE 	A,#03H,?C0372
-			; SOURCE LINE # 2779
+	CJNE 	A,#03H,?C0381
+			; SOURCE LINE # 2981
 	LCALL	play_step
-			; SOURCE LINE # 2780
-	SJMP 	?C0370
-			; SOURCE LINE # 2781
-?C0372:
-			; SOURCE LINE # 2784
+			; SOURCE LINE # 2982
+	SJMP 	?C0379
+			; SOURCE LINE # 2983
+?C0381:
+			; SOURCE LINE # 2986
 	LCALL	av_gate
-			; SOURCE LINE # 2787
-	JNB  	recon,?C0373
-			; SOURCE LINE # 2788
+			; SOURCE LINE # 2989
+	JNB  	recon,?C0382
+			; SOURCE LINE # 2990
 	LCALL	rec_sample
-?C0373:
-			; SOURCE LINE # 2791
+?C0382:
+			; SOURCE LINE # 2993
 	MOV  	A,mode
-	JNZ  	?C0374
-			; SOURCE LINE # 2792
+	JNZ  	?C0383
+			; SOURCE LINE # 2994
 	LCALL	manual_step
-			; SOURCE LINE # 2793
-	SJMP 	?C0375
-?C0374:
-			; SOURCE LINE # 2794
+			; SOURCE LINE # 2995
+	SJMP 	?C0384
+?C0383:
+			; SOURCE LINE # 2996
 	MOV  	A,mode
-	CJNE 	A,#01H,?C0376
-			; SOURCE LINE # 2795
+	CJNE 	A,#01H,?C0385
+			; SOURCE LINE # 2997
 	LCALL	light_step
-	SJMP 	?C0377
-?C0376:
-			; SOURCE LINE # 2796
+	SJMP 	?C0386
+?C0385:
+			; SOURCE LINE # 2998
 	MOV  	A,mode
-	CJNE 	A,#02H,?C0377
-			; SOURCE LINE # 2797
+	CJNE 	A,#02H,?C0386
+			; SOURCE LINE # 2999
 	LCALL	track_step
-?C0377:
-			; SOURCE LINE # 2798
+?C0386:
+			; SOURCE LINE # 3000
 	LCALL	auto_step
-			; SOURCE LINE # 2799
-?C0375:
-			; SOURCE LINE # 2802
+			; SOURCE LINE # 3001
+?C0384:
+			; SOURCE LINE # 3004
 	LCALL	back_guard
-			; SOURCE LINE # 2805
+			; SOURCE LINE # 3007
 	LCALL	prox_beep
-			; SOURCE LINE # 2808
+			; SOURCE LINE # 3010
 	LCALL	key_scan
-	MOV  	k?6582,R7
-			; SOURCE LINE # 2810
-	MOV  	A,k?6582
-	CJNE 	A,#03H,?C0379
-			; SOURCE LINE # 2811
-	JNB  	recon,?C0380
-			; SOURCE LINE # 2813
-			; SOURCE LINE # 2814
-	LCALL	L?0421
-			; SOURCE LINE # 2815
+	MOV  	k?6281,R7
+			; SOURCE LINE # 3012
+	MOV  	A,k?6281
+	CJNE 	A,#03H,?C0388
+			; SOURCE LINE # 3013
+	JNB  	recon,?C0389
+			; SOURCE LINE # 3015
+			; SOURCE LINE # 3016
+	LCALL	L?0435
+			; SOURCE LINE # 3017
 	MOV  	R7,#018H
 	LCALL	_beep
-			; SOURCE LINE # 2816
-	SJMP 	?C0370
-?C0380:
-			; SOURCE LINE # 2817
+			; SOURCE LINE # 3018
+	SJMP 	?C0379
+?C0389:
+			; SOURCE LINE # 3019
 	LCALL	mode_switch
-			; SOURCE LINE # 2818
-			; SOURCE LINE # 2819
-	SJMP 	?C0370
-			; SOURCE LINE # 2820
-?C0379:
-			; SOURCE LINE # 2821
-	MOV  	A,k?6582
-	CJNE 	A,#04H,?C0382
-			; SOURCE LINE # 2822
+			; SOURCE LINE # 3020
+			; SOURCE LINE # 3021
+	SJMP 	?C0379
+			; SOURCE LINE # 3022
+?C0388:
+			; SOURCE LINE # 3023
+	MOV  	A,k?6281
+	CJNE 	A,#04H,?C0391
+			; SOURCE LINE # 3024
 	LCALL	avoid_toggle
-			; SOURCE LINE # 2823
-	SJMP 	?C0370
-			; SOURCE LINE # 2824
-?C0382:
-			; SOURCE LINE # 2825
-	MOV  	A,k?6582
-	CJNE 	A,#01H,?C0383
-			; SOURCE LINE # 2826
+			; SOURCE LINE # 3025
+	SJMP 	?C0379
+			; SOURCE LINE # 3026
+?C0391:
+			; SOURCE LINE # 3027
+	MOV  	A,k?6281
+	CJNE 	A,#01H,?C0392
+			; SOURCE LINE # 3028
 	MOV  	A,gear
 	CLR  	C
 	SUBB 	A,#05H
-	JNC  	?C0370
-			; SOURCE LINE # 2827
-?C0384:
-			; SOURCE LINE # 2828
+	JNC  	?C0379
+			; SOURCE LINE # 3029
+?C0393:
+			; SOURCE LINE # 3030
 	INC  	gear
-			; SOURCE LINE # 2829
+			; SOURCE LINE # 3031
 	LCALL	ml_apply
-			; SOURCE LINE # 2830
-	SJMP 	?C0370
-?C0383:
-	MOV  	A,k?6582
+			; SOURCE LINE # 3032
+	SJMP 	?C0379
+?C0392:
+	MOV  	A,k?6281
 	XRL  	A,#02H
-	JNZ  	?C0370
-			; SOURCE LINE # 2831
+	JNZ  	?C0379
+			; SOURCE LINE # 3033
 	MOV  	A,gear
-	JZ   	?C0370
-			; SOURCE LINE # 2832
-?C0387:
-			; SOURCE LINE # 2833
+	JZ   	?C0379
+			; SOURCE LINE # 3034
+?C0396:
+			; SOURCE LINE # 3035
 	DEC  	gear
-			; SOURCE LINE # 2834
+			; SOURCE LINE # 3036
 	LCALL	ml_apply
-			; SOURCE LINE # 2835
-			; SOURCE LINE # 2836
-	LJMP 	?C0370
+			; SOURCE LINE # 3037
+			; SOURCE LINE # 3038
+	LJMP 	?C0379
 ; END OF main
 
 ;=========================================================================
@@ -3958,7 +3971,7 @@ main:
 
 ;--------------------------------------------------------------- ?DT?rec_fullstop?MAIN
 ?rec_fullstop?BYTE:
-         i?4370:   DS   1
+         i?4571:   DS   1
 
 ;--------------------------------------------------------------- ?DT?mode_switch?MAIN
 ?mode_switch?BYTE:
@@ -3966,7 +3979,11 @@ main:
 
 ;--------------------------------------------------------------- ?DT?main?MAIN
 ?main?BYTE:
-         k?6582:   DS   1
+         k?6281:   DS   1
+
+;--------------------------------------------------------------- ?DT?av_mnv_step?MAIN
+?av_mnv_step?BYTE:
+        el?2657:   DS   2
 
 ;--------------------------------------------------------------- ?DT?track_step?MAIN
 ?track_step?BYTE:
@@ -3982,7 +3999,7 @@ main:
 
 ;--------------------------------------------------------------- ?DT?av_gate?MAIN
 ?av_gate?BYTE:
-         d?2557:   DS   1
+         d?2758:   DS   1
 
 ;--------------------------------------------------------------- ?DT?MAIN
         playidx:   DS   1
@@ -3999,7 +4016,6 @@ main:
      av_clear_t:   DS   2
         back_t0:   DS   2
          irstat:   DS   1
-        diag_t0:   DS   2
          prox_t:   DS   2
            pack:   DS   1
            gear:   DS   1
@@ -4009,7 +4025,6 @@ main:
            recn:   DS   1
       av_beep_t:   DS   2
           lastt:   DS   2
-       diag_cmd:   DS   1
           us_st:   DS   1
            samp:   DS   2
          ir_ib0:   DS   1
@@ -4018,13 +4033,11 @@ main:
          ir_ib3:   DS   1
         play_t0:   DS   2
            avst:   DS   1
-       diag_seq:   DS   1
       us_last_d:   DS   1
        ir_ledhi:   DS   1
     prox_stop_t:   DS   2
        ir_maskb:   DS   1
        ir_ledlo:   DS   1
-        diag_on:   DS   1
        ml_level:   DS   1
       ir_ptridx:   DS   1
        buz_left:   DS   1
@@ -4053,6 +4066,7 @@ main:
 ;--------------------------------------------------------------- ?BI?MAIN
     av_clear_on:   DBIT   1
         playerr:   DBIT   1
+         av_mnv:   DBIT   1
          us_got:   DBIT   1
           recon:   DBIT   1
     us_avoid_on:   DBIT   1

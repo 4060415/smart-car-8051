@@ -70,3 +70,15 @@ __pycache__/
 
 # git 自身
 .gitignore.bak
+
+# 会话/工具产生的临时物（报告生成、幻灯片预览、进度插件缓存）
+.tmp_report/
+.preview/
+.lark-slides/
+.workspace-progress/
+/*.xml
+/*.py
+
+# 手工备份文件（历史交给 git 就够了）
+*.bak
+*.bak_*
