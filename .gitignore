@@ -79,6 +79,9 @@ __pycache__/
 /*.xml
 /*.py
 
+# 本机推送用的临时 SSH 密钥（绝不入库）
+.ssh_push/
+
 # 手工备份文件（历史交给 git 就够了）
 *.bak
 *.bak_*
